@@ -14,6 +14,9 @@ ignore = [
     "E402",   # module-level import not at top — normal in scripts with sys.path setup
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"ml/*.py" = ["I001"]   # complex multi-line imports — sorted correctly, ruff disagrees on style
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

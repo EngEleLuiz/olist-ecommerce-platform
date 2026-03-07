@@ -33,8 +33,10 @@ import pandas as pd
 import shap
 from loguru import logger
 from sklearn.metrics import (
-    average_precision_score, classification_report,
-    f1_score, roc_auc_score,
+    average_precision_score,
+    classification_report,
+    f1_score,
+    roc_auc_score,
 )
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier

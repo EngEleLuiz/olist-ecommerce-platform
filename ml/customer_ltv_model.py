@@ -28,7 +28,6 @@ import os
 from pathlib import Path
 
 import mlflow
-import numpy as np
 import pandas as pd
 from lifetimes import BetaGeoFitter, GammaGammaFitter
 from lifetimes.utils import calibration_and_holdout_data
@@ -128,20 +127,20 @@ class CustomerLTVModel:
                     frequency=rfm["frequency_repeat"].values,
                     recency=rfm["recency_days"].values,
                     T=rfm["T_days"].values,
-                )
+                ).values
 
             # P(alive) — probability customer hasn't churned
             predictions["p_alive"] = self.bgf.conditional_probability_alive(
                 frequency=rfm["frequency_repeat"].values,
                 recency=rfm["recency_days"].values,
                 T=rfm["T_days"].values,
-            )
+            ).values
 
             # Expected monetary value per transaction
             predictions["expected_avg_order_value"] = self.ggf.conditional_expected_average_profit(
                 frequency=rfm["frequency_repeat"].values,
                 monetary_value=rfm["monetary_mean"].values,
-            )
+            ).values
 
             # LTV = predicted purchases × expected monetary value
             for days in predict_days:

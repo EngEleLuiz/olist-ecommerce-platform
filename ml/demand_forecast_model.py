@@ -321,8 +321,6 @@ class DemandForecastModel:
         last_week = df["week_start"].max()
         forecasts = []
 
-        current_df = df.copy()
-
         for step in range(1, self.horizon + 1):
             next_week = last_week + pd.Timedelta(weeks=step)
 
