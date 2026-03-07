@@ -50,9 +50,9 @@ locals {
   # Those two values are referenced directly in step_functions.tf where needed.
   sf_substitutions = {
     DataBucket       = aws_s3_bucket.data.bucket
-    GlueBronzeJob    = aws_glue_job.bronze.name
-    GlueSilverJob    = aws_glue_job.silver.name
-    GlueGoldJob      = aws_glue_job.gold.name
+    GlueBronzeJob    = var.enable_glue ? aws_glue_job.bronze[0].name : ""
+    GlueSilverJob    = var.enable_glue ? aws_glue_job.silver[0].name : ""
+    GlueGoldJob      = var.enable_glue ? aws_glue_job.gold[0].name : ""
     EcsCluster       = aws_ecs_cluster.main.name
     DbtTaskDef       = aws_ecs_task_definition.dbt.arn
     MlTaskDef        = aws_ecs_task_definition.ml.arn

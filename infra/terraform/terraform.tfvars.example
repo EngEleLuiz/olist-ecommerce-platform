@@ -1,0 +1,33 @@
+# Replace 123456789012 with your real AWS account ID from:
+#   aws sts get-caller-identity --query Account --output text
+#
+# Image URIs stay as-is until Step 10 (CI/CD) builds and pushes them.
+
+aws_region  = "us-east-1"
+environment = "prod"
+project     = "olist"
+
+# Redshift
+redshift_admin_user     = "olist_admin"
+redshift_admin_password = "OlistDev2024#Secure!"
+redshift_db_name        = "olist"
+redshift_base_capacity  = 8
+
+# Glue
+glue_worker_type = "G.1X"
+glue_num_workers = 2
+
+# Container images — filled in after Step 10 builds and pushes them.
+# Pattern: <account_id>.dkr.ecr.us-east-1.amazonaws.com/<repo>:latest
+dashboard_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/olist-dashboard:latest"
+ml_image        = "123456789012.dkr.ecr.us-east-1.amazonaws.com/olist-ml:latest"
+dbt_image       = "123456789012.dkr.ecr.us-east-1.amazonaws.com/olist-dbt:latest"
+
+# Feature flags
+# Set to true only after activating the service in AWS Console
+enable_redshift = false
+enable_glue     = false
+
+# Networking
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]

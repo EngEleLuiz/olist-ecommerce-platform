@@ -68,7 +68,7 @@ resource "aws_iam_role_policy" "ecs_task_s3" {
 # ── Security groups ───────────────────────────────────────────────────────────
 resource "aws_security_group" "alb" {
   name        = "${local.prefix}-alb-sg"
-  description = "ALB — public HTTP"
+  description = "ALB - public HTTP"
   vpc_id      = aws_vpc.main.id
 
   ingress {

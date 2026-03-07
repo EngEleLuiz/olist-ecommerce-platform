@@ -41,7 +41,7 @@ resource "aws_iam_role_policy" "sfn" {
       {
         Effect = "Allow"
         Action = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"]
-        Resource = [aws_glue_job.bronze.arn, aws_glue_job.silver.arn, aws_glue_job.gold.arn]
+        Resource = var.enable_glue ? [aws_glue_job.bronze[0].arn, aws_glue_job.silver[0].arn, aws_glue_job.gold[0].arn] : ["arn:aws:glue:*:*:job/placeholder"]
       },
       {
         Effect   = "Allow"

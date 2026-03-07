@@ -37,8 +37,9 @@ try:
 except ImportError:
     IS_GLUE = False
 
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 
 
 def get_spark(local: bool = False) -> SparkSession:
@@ -53,7 +54,7 @@ def get_spark(local: bool = False) -> SparkSession:
     )
 
 
-def build_gold_orders(silver: "DataFrame") -> "DataFrame":
+def build_gold_orders(silver: DataFrame) -> DataFrame:
     """One row per delivered order — the ML feature store.
 
     Contains every feature the ML models need so training never
@@ -84,7 +85,7 @@ def build_gold_orders(silver: "DataFrame") -> "DataFrame":
     return df
 
 
-def build_kpi_monthly(silver: "DataFrame") -> "DataFrame":
+def build_kpi_monthly(silver: DataFrame) -> DataFrame:
     """Monthly business KPIs by state.
 
     Key metrics for the executive dashboard:
@@ -109,7 +110,6 @@ def build_kpi_monthly(silver: "DataFrame") -> "DataFrame":
     )
 
     # Month-over-month GMV growth per state
-    from pyspark.sql.window import Window
     w = Window.partitionBy("customer_state").orderBy("purchase_ym")
     monthly = monthly.withColumn(
         "gmv_mom_growth",
@@ -120,14 +120,12 @@ def build_kpi_monthly(silver: "DataFrame") -> "DataFrame":
     return monthly
 
 
-def build_seller_performance(silver: "DataFrame", items: "DataFrame", sellers: "DataFrame") -> "DataFrame":
+def build_seller_performance(silver: DataFrame, items: DataFrame, sellers: DataFrame) -> DataFrame:
     """Seller-level performance — rolling 30 / 90 / 365 day windows.
 
     Used in the Seller Performance dashboard page and as features
     for the delivery delay model.
     """
-    from pyspark.sql.window import Window
-
     # Join items back to get per-seller order info
     seller_orders = (
         items.select("order_id", "seller_id", "price", "freight_value")
@@ -174,7 +172,7 @@ def build_seller_performance(silver: "DataFrame", items: "DataFrame", sellers: "
     return seller_agg
 
 
-def build_category_demand(silver: "DataFrame") -> "DataFrame":
+def build_category_demand(silver: DataFrame) -> DataFrame:
     """Weekly order volume by category and state — LightGBM training input."""
     df = silver.filter(F.col("order_status") == "delivered")
     df = df.withColumn(
@@ -190,7 +188,6 @@ def build_category_demand(silver: "DataFrame") -> "DataFrame":
     )
 
     # Week-over-week change per state+category
-    from pyspark.sql.window import Window
     w = Window.partitionBy("customer_state", "main_category").orderBy("week_start")
     demand = demand.withColumn(
         "wow_growth",

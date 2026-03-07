@@ -83,3 +83,15 @@ variable "availability_zones" {
   type        = list(string)
   default     = ["us-east-1a", "us-east-1b"]
 }
+
+variable "enable_redshift" {
+  description = "Set to true only after activating Redshift Serverless in the AWS Console (requires account subscription)"
+  type        = bool
+  default     = false
+}
+
+variable "enable_glue" {
+  description = "Set to true after attaching AWSGlueConsoleFullAccess to the deployer IAM user"
+  type        = bool
+  default     = false
+}

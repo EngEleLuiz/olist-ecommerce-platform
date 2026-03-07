@@ -41,7 +41,6 @@ with col_l:
                           format_func=lambda x: {"gmv": "GMV", "order_count": "Orders",
                                                   "payment_value": "Payment Value"}[x])
     # Recompute for selected metric
-    import pandas as pd
     state_agg = (
         df.groupby("customer_state")
         .agg(gmv=("payment_value","sum"), order_count=("order_id","count"),

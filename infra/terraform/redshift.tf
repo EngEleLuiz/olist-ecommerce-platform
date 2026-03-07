@@ -1,5 +1,6 @@
 # ── Redshift Serverless ───────────────────────────────────────────────────────
 resource "aws_redshiftserverless_namespace" "main" {
+  count          = var.enable_redshift ? 1 : 0
   namespace_name      = "${local.prefix}-ns"
   db_name             = var.redshift_db_name
   admin_username      = var.redshift_admin_user
@@ -13,7 +14,8 @@ resource "aws_redshiftserverless_namespace" "main" {
 }
 
 resource "aws_redshiftserverless_workgroup" "main" {
-  namespace_name = aws_redshiftserverless_namespace.main.namespace_name
+  count          = var.enable_redshift ? 1 : 0
+  namespace_name = aws_redshiftserverless_namespace.main[0].namespace_name
   workgroup_name = "${local.prefix}-wg"
   base_capacity  = var.redshift_base_capacity   # 8 RPU minimum — ~$0.36/hr when active
 
@@ -57,7 +59,7 @@ resource "aws_iam_role_policy" "redshift_s3" {
 # ── Security group — only ECS tasks can reach Redshift ───────────────────────
 resource "aws_security_group" "redshift" {
   name        = "${local.prefix}-redshift-sg"
-  description = "Redshift Serverless — only ECS tasks"
+  description = "Redshift Serverless - only ECS tasks"
   vpc_id      = aws_vpc.main.id
 
   ingress {

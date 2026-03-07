@@ -64,6 +64,7 @@ resource "aws_s3_bucket_public_access_block" "glue_scripts" {
 
 # Upload ETL scripts so Glue can find them
 resource "aws_s3_object" "bronze_script" {
+  count  = var.enable_glue ? 1 : 0
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "scripts/bronze_ingestion.py"
   source = "${path.module}/../../etl/bronze_ingestion.py"
@@ -71,6 +72,7 @@ resource "aws_s3_object" "bronze_script" {
 }
 
 resource "aws_s3_object" "silver_script" {
+  count  = var.enable_glue ? 1 : 0
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "scripts/silver_transform.py"
   source = "${path.module}/../../etl/silver_transform.py"
@@ -78,6 +80,7 @@ resource "aws_s3_object" "silver_script" {
 }
 
 resource "aws_s3_object" "gold_script" {
+  count  = var.enable_glue ? 1 : 0
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "scripts/gold_aggregation.py"
   source = "${path.module}/../../etl/gold_aggregation.py"

@@ -15,7 +15,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"ml/*.py" = ["I001"]   # complex multi-line imports — sorted correctly, ruff disagrees on style
+"ml/*.py"              = ["I001"]   # multi-line imports sorted correctly
+"dashboard/pages/*.py" = ["I001", "E402"]  # sys.path.insert must precede local imports
+"etl/*.py"             = ["I001"]   # pyspark imports after conditional awsglue block
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -10,7 +10,7 @@ output "dashboard_url" {
 
 output "redshift_endpoint" {
   description = "Redshift Serverless endpoint for dbt profiles.yml"
-  value       = aws_redshiftserverless_workgroup.main.endpoint[0].address
+  value       = var.enable_redshift ? aws_redshiftserverless_workgroup.main[0].endpoint[0].address : "redshift-not-enabled"
 }
 
 output "redshift_port" {

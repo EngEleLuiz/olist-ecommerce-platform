@@ -50,6 +50,7 @@ locals {
 }
 
 resource "aws_glue_job" "bronze" {
+  count             = var.enable_glue ? 1 : 0
   name              = "${local.prefix}-bronze-ingestion"
   role_arn          = aws_iam_role.glue.arn
   glue_version      = "4.0"
@@ -71,6 +72,7 @@ resource "aws_glue_job" "bronze" {
 }
 
 resource "aws_glue_job" "silver" {
+  count             = var.enable_glue ? 1 : 0
   name              = "${local.prefix}-silver-transform"
   role_arn          = aws_iam_role.glue.arn
   glue_version      = "4.0"
@@ -92,6 +94,7 @@ resource "aws_glue_job" "silver" {
 }
 
 resource "aws_glue_job" "gold" {
+  count             = var.enable_glue ? 1 : 0
   name              = "${local.prefix}-gold-aggregation"
   role_arn          = aws_iam_role.glue.arn
   glue_version      = "4.0"
@@ -110,4 +113,9 @@ resource "aws_glue_job" "gold" {
   })
 
   execution_property { max_concurrent_runs = 1 }
+}
+
+resource "aws_iam_user_policy_attachment" "deployer_glue" {
+  user       = "Mestrado"
+  policy_arn = "arn:aws:iam::aws:policy/AWSGlueConsoleFullAccess"
 }

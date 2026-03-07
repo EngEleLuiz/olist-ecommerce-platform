@@ -14,7 +14,7 @@ Usage:
 from __future__ import annotations
 
 import os
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +69,7 @@ class OlistLoader:
 
     # ── Raw table accessors ───────────────────────────────────────────────────
 
-    @lru_cache(maxsize=None)
+    @cache
     def orders(self) -> pd.DataFrame:
         df = self._read("orders")
         ts_cols = [
@@ -82,33 +82,33 @@ class OlistLoader:
                 df[col] = pd.to_datetime(df[col], errors="coerce")
         return df
 
-    @lru_cache(maxsize=None)
+    @cache
     def order_items(self) -> pd.DataFrame:
         return self._read("order_items")
 
-    @lru_cache(maxsize=None)
+    @cache
     def order_payments(self) -> pd.DataFrame:
         return self._read("order_payments")
 
-    @lru_cache(maxsize=None)
+    @cache
     def order_reviews(self) -> pd.DataFrame:
         return self._read("order_reviews")
 
-    @lru_cache(maxsize=None)
+    @cache
     def customers(self) -> pd.DataFrame:
         return self._read("customers")
 
-    @lru_cache(maxsize=None)
+    @cache
     def sellers(self) -> pd.DataFrame:
         return self._read("sellers")
 
-    @lru_cache(maxsize=None)
+    @cache
     def products(self) -> pd.DataFrame:
         df = self._read("products")
         cat = self._read("product_category")
         return df.merge(cat, on="product_category_name", how="left")
 
-    @lru_cache(maxsize=None)
+    @cache
     def geolocation(self) -> pd.DataFrame:
         df = self._read("geolocation")
         # Keep one row per zip prefix to avoid fan-out in joins
@@ -116,7 +116,7 @@ class OlistLoader:
 
     # ── Joined / enriched tables ──────────────────────────────────────────────
 
-    @lru_cache(maxsize=None)
+    @cache
     def order_features(self) -> pd.DataFrame:
         """Fully joined order-level analysis table.
 
@@ -221,7 +221,7 @@ class OlistLoader:
         logger.info(f"order_features: {len(df):,} rows, {len(df.columns)} columns")
         return df
 
-    @lru_cache(maxsize=None)
+    @cache
     def customer_rfm(self) -> pd.DataFrame:
         """RFM table per customer — input to the BG/NBD LTV model."""
         df = self.order_features()
@@ -240,7 +240,7 @@ class OlistLoader:
         rfm["frequency_repeat"] = (rfm["frequency"] - 1).clip(lower=0)
         return rfm
 
-    @lru_cache(maxsize=None)
+    @cache
     def demand_series(self) -> pd.DataFrame:
         """Weekly order counts by state and category — input to LightGBM."""
         df = self.order_features()

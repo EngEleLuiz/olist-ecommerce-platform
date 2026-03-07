@@ -19,7 +19,6 @@ Local dev:
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -40,7 +39,7 @@ except ImportError:
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
-    DoubleType, IntegerType, StringType, StructField, StructType, TimestampType,
+    DoubleType, IntegerType, StringType, StructField, StructType,
 )
 
 
