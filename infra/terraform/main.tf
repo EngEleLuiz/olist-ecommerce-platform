@@ -44,7 +44,10 @@ locals {
   region     = data.aws_region.current.name
   prefix     = "${var.project}-${var.environment}"
 
-  # Passed into Step Functions ASL as template variables
+  # Passed into Step Functions ASL via templatefile() — no self-references allowed here.
+  # StateMachineArn and SchedulerRoleArn are NOT included: the state machine reads
+  # this local to build its own definition, so including its own ARN would be a cycle.
+  # Those two values are referenced directly in step_functions.tf where needed.
   sf_substitutions = {
     DataBucket       = aws_s3_bucket.data.bucket
     GlueBronzeJob    = aws_glue_job.bronze.name
@@ -56,7 +59,5 @@ locals {
     PrivateSubnets   = join(",", aws_subnet.private[*].id)
     EcsSecurityGroup = aws_security_group.ecs.id
     PipelineLogTable = aws_dynamodb_table.pipeline_log.name
-    StateMachineArn  = aws_sfn_state_machine.pipeline.arn
-    SchedulerRoleArn = aws_iam_role.scheduler.arn
   }
 }

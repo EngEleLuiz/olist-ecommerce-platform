@@ -38,9 +38,9 @@ try:
 except ImportError:
     IS_GLUE = False
 
-from pyspark.sql import SparkSession
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType, IntegerType
+from pyspark.sql.types import DoubleType
 
 
 # ── Brazilian state → region mapping ─────────────────────────────────────────
@@ -67,7 +67,7 @@ def get_spark(local: bool = False) -> SparkSession:
     )
 
 
-def transform_orders(spark: SparkSession, bronze_path: str) -> "DataFrame":
+def transform_orders(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Clean and enrich the orders table."""
     df = spark.read.parquet(f"{bronze_path}/orders")
 
@@ -131,7 +131,7 @@ def transform_orders(spark: SparkSession, bronze_path: str) -> "DataFrame":
     return df.drop("_ingestion_date", "_source_file", "_row_count")
 
 
-def transform_order_items(spark: SparkSession, bronze_path: str) -> "DataFrame":
+def transform_order_items(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Aggregate items to order level and add product category."""
     items    = spark.read.parquet(f"{bronze_path}/order_items")
     products = spark.read.parquet(f"{bronze_path}/products")
@@ -181,7 +181,7 @@ def transform_order_items(spark: SparkSession, bronze_path: str) -> "DataFrame":
     return agg.join(main_cat, on="order_id", how="left")
 
 
-def transform_customers(spark: SparkSession, bronze_path: str) -> "DataFrame":
+def transform_customers(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Add region mapping to customers."""
     df = spark.read.parquet(f"{bronze_path}/customers")
 
@@ -192,7 +192,7 @@ def transform_customers(spark: SparkSession, bronze_path: str) -> "DataFrame":
     return df.join(region_map, on="customer_state", how="left")
 
 
-def transform_payments(spark: SparkSession, bronze_path: str) -> "DataFrame":
+def transform_payments(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Aggregate payments per order."""
     df = spark.read.parquet(f"{bronze_path}/order_payments")
 
@@ -221,7 +221,7 @@ def transform_payments(spark: SparkSession, bronze_path: str) -> "DataFrame":
     return agg.join(dom, on="order_id", how="left")
 
 
-def transform_reviews(spark: SparkSession, bronze_path: str) -> "DataFrame":
+def transform_reviews(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Keep latest review per order, add sentiment bucket."""
     df = spark.read.parquet(f"{bronze_path}/order_reviews")
     df = df.withColumn(
