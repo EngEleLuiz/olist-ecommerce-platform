@@ -1,0 +1,19 @@
+{
+  "Comment": "EventBridge Scheduler rule — triggers the Olist pipeline nightly at 02:00 UTC",
+  "ScheduleExpression": "cron(0 2 * * ? *)",
+  "State": "ENABLED",
+  "Description": "Olist daily pipeline — Bronze→Silver→Gold→dbt→ML",
+  "Input": {
+    "trigger":       "scheduled",
+    "force_retrain": false
+  },
+  "Target": {
+    "comment": "ARN and RoleArn are filled in by Terraform — see infra/terraform/step_functions.tf",
+    "StateMachineArn": "${StateMachineArn}",
+    "RoleArn":         "${SchedulerRoleArn}",
+    "RetryPolicy": {
+      "MaximumRetryAttempts":        1,
+      "MaximumEventAgeInSeconds":    3600
+    }
+  }
+}

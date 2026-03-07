@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name":            "Olist Dev (local)",
+      "Group":           "Servers",
+      "Host":            "postgres",
+      "Port":            5432,
+      "MaintenanceDB":   "olist",
+      "Username":        "olist",
+      "SSLMode":         "prefer",
+      "PassFile":        "/pgpass",
+      "Comment":         "Local Olist PostgreSQL — docker compose"
+    }
+  }
+}

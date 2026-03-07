@@ -1,0 +1,189 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_retrain:
+        description: "Trigger ML retraining after deploy"
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false   # never cancel a deploy mid-flight
+
+env:
+  AWS_REGION:   us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+
+  # ── Build and push all three Docker images ─────────────────────────────────
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    outputs:
+      dashboard_image: ${{ steps.meta.outputs.dashboard }}
+      ml_image:        ${{ steps.meta.outputs.ml }}
+      dbt_image:       ${{ steps.meta.outputs.dbt }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tags
+        id: meta
+        run: |
+          SHA=${{ github.sha }}
+          SHORT=${SHA::7}
+          echo "dashboard=${{ env.ECR_REGISTRY }}/olist-dashboard:${SHORT}" >> $GITHUB_OUTPUT
+          echo "ml=${{ env.ECR_REGISTRY }}/olist-ml:${SHORT}"               >> $GITHUB_OUTPUT
+          echo "dbt=${{ env.ECR_REGISTRY }}/olist-dbt:${SHORT}"             >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push dashboard
+        uses: docker/build-push-action@v5
+        with:
+          context:   .
+          file:      Dockerfile.dashboard
+          push:      true
+          tags: |
+            ${{ steps.meta.outputs.dashboard }}
+            ${{ env.ECR_REGISTRY }}/olist-dashboard:latest
+          cache-from: type=gha,scope=dashboard
+          cache-to:   type=gha,scope=dashboard,mode=max
+
+      - name: Build & push ml
+        uses: docker/build-push-action@v5
+        with:
+          context:   .
+          file:      Dockerfile.ml
+          push:      true
+          tags: |
+            ${{ steps.meta.outputs.ml }}
+            ${{ env.ECR_REGISTRY }}/olist-ml:latest
+          cache-from: type=gha,scope=ml
+          cache-to:   type=gha,scope=ml,mode=max
+
+      - name: Build & push dbt
+        uses: docker/build-push-action@v5
+        with:
+          context:   .
+          file:      Dockerfile.dbt
+          push:      true
+          tags: |
+            ${{ steps.meta.outputs.dbt }}
+            ${{ env.ECR_REGISTRY }}/olist-dbt:latest
+          cache-from: type=gha,scope=dbt
+          cache-to:   type=gha,scope=dbt,mode=max
+
+  # ── Terraform apply ────────────────────────────────────────────────────────
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: build
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.7"
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+        env:
+          TF_VAR_dashboard_image:         ${{ needs.build.outputs.dashboard_image }}
+          TF_VAR_ml_image:                ${{ needs.build.outputs.ml_image }}
+          TF_VAR_dbt_image:               ${{ needs.build.outputs.dbt_image }}
+          TF_VAR_redshift_admin_password: ${{ secrets.REDSHIFT_ADMIN_PASSWORD }}
+          TF_VAR_aws_region:              ${{ env.AWS_REGION }}
+
+      - name: Terraform apply
+        run: terraform apply -auto-approve tfplan
+        env:
+          TF_VAR_dashboard_image:         ${{ needs.build.outputs.dashboard_image }}
+          TF_VAR_ml_image:                ${{ needs.build.outputs.ml_image }}
+          TF_VAR_dbt_image:               ${{ needs.build.outputs.dbt_image }}
+          TF_VAR_redshift_admin_password: ${{ secrets.REDSHIFT_ADMIN_PASSWORD }}
+          TF_VAR_aws_region:              ${{ env.AWS_REGION }}
+
+  # ── Force ECS to pick up the new image ────────────────────────────────────
+  redeploy:
+    name: Redeploy Dashboard
+    runs-on: ubuntu-latest
+    needs: [build, terraform]
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster olist-prod-cluster \
+            --service olist-prod-dashboard \
+            --force-new-deployment \
+            --query "service.deployments[0].{status:status,desired:desiredCount}" \
+            --output table
+
+      - name: Wait for service stability
+        run: |
+          aws ecs wait services-stable \
+            --cluster olist-prod-cluster \
+            --services olist-prod-dashboard
+          echo "Dashboard deployed ✓"
+
+  # ── Optionally trigger the full pipeline run ──────────────────────────────
+  trigger-pipeline:
+    name: Trigger Pipeline
+    runs-on: ubuntu-latest
+    needs: redeploy
+    if: ${{ github.event.inputs.force_retrain == 'true' }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Start Step Functions execution
+        run: |
+          aws stepfunctions start-execution \
+            --state-machine-arn arn:aws:states:${{ env.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:stateMachine:olist-prod-pipeline \
+            --input '{"trigger":"manual","force_retrain":true}' \
+            --query "executionArn" \
+            --output text
+          echo "Pipeline execution started ✓"

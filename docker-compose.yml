@@ -1,0 +1,66 @@
+version: "3.9"
+
+# Olist local dev stack — PostgreSQL + pgAdmin only.
+# Everything else (Glue, Redshift, Step Functions) runs on AWS.
+#
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Wipe:    docker compose down -v   (deletes postgres data too)
+# Logs:    docker compose logs -f postgres
+# pgAdmin: http://localhost:5050
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: olist_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-olist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-olist_dev}
+      POSTGRES_DB:       ${POSTGRES_DB:-olist}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-olist} -d ${POSTGRES_DB:-olist}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - olist_net
+
+  # ── pgAdmin ─────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: olist_pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    ${PGADMIN_EMAIL:-admin@olist.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"          # single-user desktop mode
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - olist_net
+
+volumes:
+  postgres_data:
+    name: olist_postgres_data
+  pgadmin_data:
+    name: olist_pgadmin_data
+
+networks:
+  olist_net:
+    name: olist_net

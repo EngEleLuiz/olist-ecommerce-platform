@@ -1,0 +1,34 @@
+# Data — never commit raw CSVs or Parquet
+data/
+*.csv
+*.parquet
+*.pkl
+*.pt
+*.h5
+
+# Secrets
+.env
+*.tfvars
+terraform/.terraform/
+terraform/terraform.tfstate*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# MLflow
+mlruns/
+
+# OS
+.DS_Store
+Thumbs.db

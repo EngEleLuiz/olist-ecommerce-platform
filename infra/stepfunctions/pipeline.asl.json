@@ -1,0 +1,276 @@
+{
+  "Comment": "Olist E-Commerce Intelligence Pipeline — Bronze → Silver → Gold → dbt → ML → Seed",
+  "StartAt": "LogStart",
+
+  "States": {
+
+    "LogStart": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "${PipelineLogTable}",
+        "Item": {
+          "run_id":     {"S.$": "$$.Execution.Name"},
+          "pipeline":   {"S": "olist-daily"},
+          "status":     {"S": "started"},
+          "started_at": {"S.$": "$$.Execution.StartTime"},
+          "input":      {"S.$": "States.JsonToString($$.Execution.Input)"}
+        }
+      },
+      "ResultPath": null,
+      "Next": "Bronze_IngestCSVs",
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "LogFailure"}]
+    },
+
+    "Bronze_IngestCSVs": {
+      "Type": "Task",
+      "Comment": "Read CSVs from S3 raw prefix, write Parquet to bronze/ with schema enforcement",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueBronzeJob}",
+        "Arguments": {
+          "--S3_INPUT_PREFIX":  "s3://${DataBucket}/raw/",
+          "--S3_OUTPUT_PREFIX": "s3://${DataBucket}/bronze/",
+          "--INGESTION_DATE.$": "$$.Execution.StartTime"
+        }
+      },
+      "ResultPath": "$.bronze_result",
+      "Retry": [{"ErrorEquals": ["Glue.AWSGlueException","States.TaskFailed"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2.0}],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "LogFailure", "ResultPath": "$.error"}],
+      "Next": "Silver_Transform"
+    },
+
+    "Silver_Transform": {
+      "Type": "Task",
+      "Comment": "Parse timestamps, compute delay_days/is_late, map regions, DQ flags",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueSilverJob}",
+        "Arguments": {
+          "--S3_BRONZE_PREFIX": "s3://${DataBucket}/bronze/",
+          "--S3_OUTPUT_PREFIX": "s3://${DataBucket}/silver/",
+          "--INGESTION_DATE.$": "$$.Execution.StartTime"
+        }
+      },
+      "ResultPath": "$.silver_result",
+      "Retry": [{"ErrorEquals": ["Glue.AWSGlueException","States.TaskFailed"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2.0}],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "LogFailure", "ResultPath": "$.error"}],
+      "Next": "Gold_Aggregate"
+    },
+
+    "Gold_Aggregate": {
+      "Type": "Task",
+      "Comment": "Build gold_orders, gold_kpi_monthly, gold_seller_perf, gold_category_demand",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GlueGoldJob}",
+        "Arguments": {
+          "--S3_SILVER_PREFIX": "s3://${DataBucket}/silver/",
+          "--S3_OUTPUT_PREFIX": "s3://${DataBucket}/gold/",
+          "--INGESTION_DATE.$": "$$.Execution.StartTime"
+        }
+      },
+      "ResultPath": "$.gold_result",
+      "Retry": [{"ErrorEquals": ["Glue.AWSGlueException","States.TaskFailed"], "IntervalSeconds": 30, "MaxAttempts": 2, "BackoffRate": 2.0}],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "LogFailure", "ResultPath": "$.error"}],
+      "Next": "Fork_DbtAndML"
+    },
+
+    "Fork_DbtAndML": {
+      "Type": "Parallel",
+      "Comment": "dbt run and ML retraining are independent — run in parallel to cut wall-clock time",
+      "Branches": [
+
+        {
+          "StartAt": "Dbt_Run",
+          "States": {
+            "Dbt_Run": {
+              "Type": "Task",
+              "Comment": "dbt run against Redshift Serverless",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster":        "${EcsCluster}",
+                "TaskDefinition": "${DbtTaskDef}",
+                "LaunchType":     "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets":        "${PrivateSubnets}",
+                    "SecurityGroups": "${EcsSecurityGroup}",
+                    "AssignPublicIp": "DISABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{"Name": "dbt", "Command": ["run", "--profiles-dir", "/app", "--target", "prod"]}]
+                }
+              },
+              "ResultPath": "$.dbt_run",
+              "Retry": [{"ErrorEquals": ["States.TaskFailed"], "IntervalSeconds": 60, "MaxAttempts": 1}],
+              "Next": "Dbt_Test"
+            },
+            "Dbt_Test": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster":        "${EcsCluster}",
+                "TaskDefinition": "${DbtTaskDef}",
+                "LaunchType":     "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets":        "${PrivateSubnets}",
+                    "SecurityGroups": "${EcsSecurityGroup}",
+                    "AssignPublicIp": "DISABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{"Name": "dbt", "Command": ["test", "--profiles-dir", "/app", "--target", "prod"]}]
+                }
+              },
+              "ResultPath": "$.dbt_test",
+              "End": true
+            }
+          }
+        },
+
+        {
+          "StartAt": "ML_TrainDelay",
+          "States": {
+            "ML_TrainDelay": {
+              "Type": "Task",
+              "Comment": "Retrain XGBoost delivery delay model",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster":        "${EcsCluster}",
+                "TaskDefinition": "${MlTaskDef}",
+                "LaunchType":     "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets":        "${PrivateSubnets}",
+                    "SecurityGroups": "${EcsSecurityGroup}",
+                    "AssignPublicIp": "DISABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{"Name": "ml", "Command": ["python", "-m", "ml.train_all", "--model", "delay"]}]
+                }
+              },
+              "ResultPath": "$.delay",
+              "Next": "ML_TrainLTV"
+            },
+            "ML_TrainLTV": {
+              "Type": "Task",
+              "Comment": "Retrain BG/NBD + Gamma-Gamma — writes dbt_project/seeds/ltv_predictions.csv",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster":        "${EcsCluster}",
+                "TaskDefinition": "${MlTaskDef}",
+                "LaunchType":     "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets":        "${PrivateSubnets}",
+                    "SecurityGroups": "${EcsSecurityGroup}",
+                    "AssignPublicIp": "DISABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{"Name": "ml", "Command": ["python", "-m", "ml.train_all", "--model", "ltv"]}]
+                }
+              },
+              "ResultPath": "$.ltv",
+              "Next": "ML_TrainDemand"
+            },
+            "ML_TrainDemand": {
+              "Type": "Task",
+              "Comment": "Retrain LightGBM demand forecast model",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster":        "${EcsCluster}",
+                "TaskDefinition": "${MlTaskDef}",
+                "LaunchType":     "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets":        "${PrivateSubnets}",
+                    "SecurityGroups": "${EcsSecurityGroup}",
+                    "AssignPublicIp": "DISABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{"Name": "ml", "Command": ["python", "-m", "ml.train_all", "--model", "demand"]}]
+                }
+              },
+              "ResultPath": "$.demand",
+              "Next": "ML_SeedDbt"
+            },
+            "ML_SeedDbt": {
+              "Type": "Task",
+              "Comment": "Load ltv_predictions.csv into Redshift so fct_customer_ltv can join it",
+              "Resource": "arn:aws:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster":        "${EcsCluster}",
+                "TaskDefinition": "${DbtTaskDef}",
+                "LaunchType":     "FARGATE",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets":        "${PrivateSubnets}",
+                    "SecurityGroups": "${EcsSecurityGroup}",
+                    "AssignPublicIp": "DISABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [{"Name": "dbt", "Command": ["seed", "--select", "ltv_predictions", "--profiles-dir", "/app", "--target", "prod"]}]
+                }
+              },
+              "ResultPath": "$.seed",
+              "End": true
+            }
+          }
+        }
+
+      ],
+      "ResultPath": "$.parallel",
+      "Catch": [{"ErrorEquals": ["States.ALL"], "Next": "LogFailure", "ResultPath": "$.error"}],
+      "Next": "LogSuccess"
+    },
+
+    "LogSuccess": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${PipelineLogTable}",
+        "Key": {"run_id": {"S.$": "$$.Execution.Name"}},
+        "UpdateExpression": "SET #s = :s, finished_at = :f",
+        "ExpressionAttributeNames": {"#s": "status"},
+        "ExpressionAttributeValues": {
+          ":s": {"S": "succeeded"},
+          ":f": {"S.$": "$$.State.EnteredTime"}
+        }
+      },
+      "ResultPath": null,
+      "End": true
+    },
+
+    "LogFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "${PipelineLogTable}",
+        "Key": {"run_id": {"S.$": "$$.Execution.Name"}},
+        "UpdateExpression": "SET #s = :s, finished_at = :f, error_message = :e",
+        "ExpressionAttributeNames": {"#s": "status"},
+        "ExpressionAttributeValues": {
+          ":s": {"S": "failed"},
+          ":f": {"S.$": "$$.State.EnteredTime"},
+          ":e": {"S.$": "States.JsonToString($.error)"}
+        }
+      },
+      "ResultPath": null,
+      "Next": "Fail"
+    },
+
+    "Fail": {
+      "Type": "Fail",
+      "Error":  "PipelineFailed",
+      "Cause":  "One or more stages failed — check DynamoDB log and CloudWatch for details"
+    }
+
+  }
+}

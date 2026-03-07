@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Lint & static checks ───────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dev deps
+        run: pip install ruff
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+  # ── Unit tests ─────────────────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download Olist sample data
+        run: |
+          # Pull a small 1k-row sample from the repo (committed to tests/fixtures/)
+          # so CI never needs the full 100k CSV files
+          echo "Using fixture data from tests/fixtures/"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+        env:
+          USE_DUCKDB: "true"
+          DATA_DIR: tests/fixtures
+
+  # ── dbt compile (no DB connection needed) ──────────────────────────────────
+  dbt-compile:
+    name: dbt compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dbt
+        run: pip install dbt-duckdb==1.7.*
+
+      - name: dbt compile (DuckDB — no Redshift needed)
+        working-directory: dbt_project
+        run: dbt compile --profiles-dir . --target ci
+        env:
+          DBT_TARGET: ci

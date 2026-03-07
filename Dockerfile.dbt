@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    dbt-redshift==1.7.* \
+    dbt-core==1.7.*
+
+COPY dbt_project/ .
+
+# profiles.yml is baked in but reads credentials from env vars at runtime.
+# Step Functions overrides CMD per state (run / test / seed).
+ENV DBT_TARGET=prod \
+    PYTHONUNBUFFERED=1
+
+CMD ["dbt", "run", "--profiles-dir", "/app", "--target", "prod"]

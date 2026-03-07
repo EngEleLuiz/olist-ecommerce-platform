@@ -1,0 +1,28 @@
+olist:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+
+  outputs:
+    # ── Local dev — DuckDB, reads Gold Parquet directly ──────────────────────
+    dev:
+      type: duckdb
+      path: ":memory:"
+      threads: 4
+
+    # ── CI — DuckDB with fixed seed for deterministic tests ──────────────────
+    ci:
+      type: duckdb
+      path: "/tmp/olist_ci.duckdb"
+      threads: 2
+
+    # ── Production — Redshift Serverless ─────────────────────────────────────
+    prod:
+      type: redshift
+      host:     "{{ env_var('REDSHIFT_HOST') }}"
+      port:     5439
+      dbname:   "{{ env_var('REDSHIFT_DB', 'olist') }}"
+      user:     "{{ env_var('REDSHIFT_USER', 'olist_admin') }}"
+      password: "{{ env_var('REDSHIFT_PASSWORD') }}"
+      schema:   public
+      threads:  4
+      connect_timeout: 30
+      ra3_node: true    # enables cross-database queries in Redshift Serverless
