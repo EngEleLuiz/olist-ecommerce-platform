@@ -114,7 +114,7 @@ jobs:
           terraform_version: "~1.7"
 
       - name: Terraform init
-        run: terraform init
+        run: terraform init -input=false
 
       - name: Terraform plan
         run: terraform plan -out=tfplan

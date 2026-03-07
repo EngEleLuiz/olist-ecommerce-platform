@@ -8,17 +8,15 @@ terraform {
     }
   }
 
-  # Local state — simple for a portfolio project running from one machine.
-  # To migrate to S3 later (team/CI), create the bucket first then swap to:
-  #   backend "s3" {
-  #     bucket       = "olist-tf-state-<account_id>"
-  #     key          = "olist/terraform.tfstate"
-  #     region       = "us-east-1"
-  #     encrypt      = true
-  #     use_lockfile = true
-  #   }
-  backend "local" {
-    path = "terraform.tfstate"
+  # S3 backend — state persists across CI runs.
+  # Create the bucket once before first apply:
+  #   aws s3 mb s3://olist-tf-state-710699193255 --region us-east-1
+  backend "s3" {
+    bucket       = "olist-tf-state-710699193255"
+    key          = "olist/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
@@ -44,10 +42,10 @@ locals {
   region     = data.aws_region.current.name
   prefix     = "${var.project}-${var.environment}"
 
-  # Passed into Step Functions ASL via templatefile() — no self-references allowed here.
-  # StateMachineArn and SchedulerRoleArn are NOT included: the state machine reads
-  # this local to build its own definition, so including its own ARN would be a cycle.
-  # Those two values are referenced directly in step_functions.tf where needed.
+  # Passed into Step Functions ASL via templatefile().
+  # StateMachineArn and SchedulerRoleArn are NOT included here —
+  # the state machine reads this local to build its own definition,
+  # so referencing its own ARN would create a dependency cycle.
   sf_substitutions = {
     DataBucket       = aws_s3_bucket.data.bucket
     GlueBronzeJob    = var.enable_glue ? aws_glue_job.bronze[0].name : ""

@@ -48,19 +48,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download Olist sample data
-        run: |
-          # Pull a small 1k-row sample from the repo (committed to tests/fixtures/)
-          # so CI never needs the full 100k CSV files
-          echo "Using fixture data from tests/fixtures/"
-
       - name: Run tests
         run: pytest tests/ -v --tb=short
         env:
           USE_DUCKDB: "true"
           DATA_DIR: tests/fixtures
 
-  # ── dbt compile (no DB connection needed) ──────────────────────────────────
+  # ── dbt parse (validates DAG + SQL syntax, no DB connection needed) ────────
   dbt-compile:
     name: dbt compile
     runs-on: ubuntu-latest
@@ -73,10 +67,11 @@ jobs:
           cache: pip
 
       - name: Install dbt
-        run: pip install dbt-duckdb==1.7.*
+        # Must match dbt-core==1.8.3 in requirements.txt
+        run: pip install "dbt-duckdb==1.8.*" "dbt-core==1.8.*"
 
-      - name: dbt compile (DuckDB — no Redshift needed)
+      - name: dbt parse (validates all SQL and refs without a live DB)
         working-directory: dbt_project
-        run: dbt compile --profiles-dir . --target ci
+        run: dbt parse --profiles-dir . --target ci
         env:
           DBT_TARGET: ci
