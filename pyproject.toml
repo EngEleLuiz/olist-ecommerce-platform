@@ -1,10 +1,18 @@
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+exclude = [
+    "notebooks/",       # Jupyter cells have non-standard import order by design
+    ".git",
+    "__pycache__",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line too long
+    "E402",   # module-level import not at top — normal in scripts with sys.path setup
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
