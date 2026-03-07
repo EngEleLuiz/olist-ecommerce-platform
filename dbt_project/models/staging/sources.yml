@@ -1,0 +1,45 @@
+version: 2
+
+sources:
+  - name: gold
+    description: "Gold layer Parquet tables loaded into Redshift from S3"
+    # In CI (DuckDB) this source is satisfied by seeds in dbt_project/seeds/
+    # In prod (Redshift) these tables come from the Glue ETL pipeline
+    schema: "{{ 'main' if target.name == 'ci' else 'public' }}"
+
+    tables:
+      - name: gold_orders
+        description: "One row per delivered order — ML feature store"
+        columns:
+          - name: order_id
+            tests: [unique, not_null]
+          - name: customer_unique_id
+            tests: [not_null]
+          - name: is_late
+            tests:
+              - accepted_values:
+                  values: [0, 1]
+          - name: review_score
+            tests:
+              - accepted_values:
+                  values: [1, 2, 3, 4, 5]
+
+      - name: gold_kpi_monthly
+        description: "Monthly GMV and order KPIs by state"
+        columns:
+          - name: purchase_ym
+            tests: [not_null]
+          - name: customer_state
+            tests: [not_null]
+
+      - name: gold_seller_perf
+        description: "Seller-level performance metrics"
+        columns:
+          - name: seller_id
+            tests: [unique, not_null]
+
+      - name: gold_category_demand
+        description: "Weekly order volume by category and state"
+        columns:
+          - name: week_start
+            tests: [not_null]

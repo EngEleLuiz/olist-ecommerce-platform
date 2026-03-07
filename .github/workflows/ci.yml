@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
 
-  # ── Lint & static checks ───────────────────────────────────────────────────
+  # ── Lint ───────────────────────────────────────────────────────────────────
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -24,14 +24,16 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install dev deps
+      - name: Install ruff
         run: pip install ruff
+
+      - name: Ruff format (auto-apply, then fail if diff)
+        run: |
+          ruff format .
+          git diff --exit-code || (echo "Files were reformatted — run 'ruff format .' locally and commit" && exit 1)
 
       - name: Ruff lint
         run: ruff check .
-
-      - name: Ruff format check
-        run: ruff format --check .
 
   # ── Unit tests ─────────────────────────────────────────────────────────────
   test:
@@ -54,9 +56,9 @@ jobs:
           USE_DUCKDB: "true"
           DATA_DIR: tests/fixtures
 
-  # ── dbt parse (validates DAG + SQL syntax, no DB connection needed) ────────
-  dbt-compile:
-    name: dbt compile
+  # ── dbt parse ─────────────────────────────────────────────────────────────
+  dbt-parse:
+    name: dbt parse
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,10 +69,15 @@ jobs:
           cache: pip
 
       - name: Install dbt
-        # Must match dbt-core==1.8.3 in requirements.txt
         run: pip install "dbt-duckdb==1.8.*" "dbt-core==1.8.*"
 
-      - name: dbt parse (validates all SQL and refs without a live DB)
+      - name: dbt seed (loads CI gold stubs into DuckDB)
+        working-directory: dbt_project
+        run: dbt seed --profiles-dir . --target ci
+        env:
+          DBT_TARGET: ci
+
+      - name: dbt parse (validates DAG and SQL syntax)
         working-directory: dbt_project
         run: dbt parse --profiles-dir . --target ci
         env:
