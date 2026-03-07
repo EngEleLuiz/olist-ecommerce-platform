@@ -94,7 +94,7 @@
                 "LaunchType":     "FARGATE",
                 "NetworkConfiguration": {
                   "AwsvpcConfiguration": {
-                    "Subnets":        "${PrivateSubnets}",
+                    "Subnets":        ${PrivateSubnets},
                     "SecurityGroups": "${EcsSecurityGroup}",
                     "AssignPublicIp": "DISABLED"
                   }
@@ -116,7 +116,7 @@
                 "LaunchType":     "FARGATE",
                 "NetworkConfiguration": {
                   "AwsvpcConfiguration": {
-                    "Subnets":        "${PrivateSubnets}",
+                    "Subnets":        ${PrivateSubnets},
                     "SecurityGroups": "${EcsSecurityGroup}",
                     "AssignPublicIp": "DISABLED"
                   }
@@ -144,7 +144,7 @@
                 "LaunchType":     "FARGATE",
                 "NetworkConfiguration": {
                   "AwsvpcConfiguration": {
-                    "Subnets":        "${PrivateSubnets}",
+                    "Subnets":        ${PrivateSubnets},
                     "SecurityGroups": "${EcsSecurityGroup}",
                     "AssignPublicIp": "DISABLED"
                   }
@@ -166,7 +166,7 @@
                 "LaunchType":     "FARGATE",
                 "NetworkConfiguration": {
                   "AwsvpcConfiguration": {
-                    "Subnets":        "${PrivateSubnets}",
+                    "Subnets":        ${PrivateSubnets},
                     "SecurityGroups": "${EcsSecurityGroup}",
                     "AssignPublicIp": "DISABLED"
                   }
@@ -188,7 +188,7 @@
                 "LaunchType":     "FARGATE",
                 "NetworkConfiguration": {
                   "AwsvpcConfiguration": {
-                    "Subnets":        "${PrivateSubnets}",
+                    "Subnets":        ${PrivateSubnets},
                     "SecurityGroups": "${EcsSecurityGroup}",
                     "AssignPublicIp": "DISABLED"
                   }
@@ -210,7 +210,7 @@
                 "LaunchType":     "FARGATE",
                 "NetworkConfiguration": {
                   "AwsvpcConfiguration": {
-                    "Subnets":        "${PrivateSubnets}",
+                    "Subnets":        ${PrivateSubnets},
                     "SecurityGroups": "${EcsSecurityGroup}",
                     "AssignPublicIp": "DISABLED"
                   }

@@ -53,7 +53,7 @@ locals {
     EcsCluster       = aws_ecs_cluster.main.name
     DbtTaskDef       = aws_ecs_task_definition.dbt.arn
     MlTaskDef        = aws_ecs_task_definition.ml.arn
-    PrivateSubnets   = join(",", aws_subnet.private[*].id)
+    PrivateSubnets   = jsonencode(aws_subnet.private[*].id)
     EcsSecurityGroup = aws_security_group.ecs.id
     PipelineLogTable = aws_dynamodb_table.pipeline_log.name
   }
