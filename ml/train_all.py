@@ -73,8 +73,8 @@ def main() -> None:
     loader = OlistLoader()
 
     trainers = {
-        "delay":  train_delay,
-        "ltv":    train_ltv,
+        "delay": train_delay,
+        "ltv": train_ltv,
         "demand": train_demand,
     }
 

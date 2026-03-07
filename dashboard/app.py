@@ -28,7 +28,8 @@ st.set_page_config(
 )
 
 # ── Global CSS — dark Brazilian market aesthetic ───────────────────────────────
-st.markdown("""
+st.markdown(
+    """
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
 
@@ -190,13 +191,16 @@ st.markdown("""
   #MainMenu, footer, header { visibility: hidden; }
   .block-container { padding-top: 1.5rem !important; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ── Data loader (cached at session level) ─────────────────────────────────────
 @st.cache_resource(show_spinner="Loading Olist dataset…")
 def get_loader():
     from data_loader import OlistLoader
+
     return OlistLoader()
 
 
@@ -205,7 +209,8 @@ def render_sidebar():
     use_duckdb = os.getenv("USE_DUCKDB", "true").lower() == "true"
 
     with st.sidebar:
-        st.markdown("""
+        st.markdown(
+            """
         <div style="padding: 8px 0 20px;">
           <div style="font-family: 'Space Mono', monospace; font-size: 1.1rem;
                       color: #e8f0f8; font-weight: 700; letter-spacing: -0.02em;">
@@ -215,41 +220,46 @@ def render_sidebar():
             </span>
           </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
-        badge_cls  = "badge-simulation" if use_duckdb else "badge-live"
-        badge_txt  = "● LOCAL CSV"      if use_duckdb else "● REDSHIFT"
+        badge_cls = "badge-simulation" if use_duckdb else "badge-live"
+        badge_txt = "● LOCAL CSV" if use_duckdb else "● REDSHIFT"
         st.markdown(f'<span class="badge {badge_cls}">{badge_txt}</span>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown('<div class="section-header">Navigation</div>', unsafe_allow_html=True)
-        st.page_link("app.py",                          label="🏠  Home",                 icon=None)
-        st.page_link("pages/01_market_overview.py",     label="📊  Market Overview")
-        st.page_link("pages/02_delivery_performance.py",label="🚚  Delivery Performance")
-        st.page_link("pages/03_customer_ltv.py",        label="💎  Customer LTV")
-        st.page_link("pages/04_demand_forecast.py",     label="📈  Demand Forecast")
-        st.page_link("pages/05_ml_predictions.py",      label="🤖  ML Predictions")
+        st.page_link("app.py", label="🏠  Home", icon=None)
+        st.page_link("pages/01_market_overview.py", label="📊  Market Overview")
+        st.page_link("pages/02_delivery_performance.py", label="🚚  Delivery Performance")
+        st.page_link("pages/03_customer_ltv.py", label="💎  Customer LTV")
+        st.page_link("pages/04_demand_forecast.py", label="📈  Demand Forecast")
+        st.page_link("pages/05_ml_predictions.py", label="🤖  ML Predictions")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown('<div class="section-header">Dataset</div>', unsafe_allow_html=True)
 
         loader = get_loader()
         summary = loader.summary()
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div style="font-family: 'Space Mono', monospace; font-size: 0.7rem; color: #4e6278; line-height: 2;">
-          ORDERS &nbsp;&nbsp; <span style="color: #cdd6e0;">{summary['total_orders']:,}</span><br>
-          DELIVERED &nbsp; <span style="color: #cdd6e0;">{summary['delivered']:,}</span><br>
-          FROM &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #cdd6e0;">{summary['date_range'][0]}</span><br>
-          TO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #cdd6e0;">{summary['date_range'][1]}</span><br>
-          FILES &nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #cdd6e0;">{summary['files_loaded']}/9</span>
+          ORDERS &nbsp;&nbsp; <span style="color: #cdd6e0;">{summary["total_orders"]:,}</span><br>
+          DELIVERED &nbsp; <span style="color: #cdd6e0;">{summary["delivered"]:,}</span><br>
+          FROM &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #cdd6e0;">{summary["date_range"][0]}</span><br>
+          TO &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #cdd6e0;">{summary["date_range"][1]}</span><br>
+          FILES &nbsp;&nbsp;&nbsp;&nbsp; <span style="color: #cdd6e0;">{summary["files_loaded"]}/9</span>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
 
 # ── Home page ─────────────────────────────────────────────────────────────────
 def render_home():
     loader = get_loader()
-    df     = loader.order_features()
+    df = loader.order_features()
 
     st.markdown("# Olist E-Commerce Intelligence")
     st.markdown(
@@ -264,34 +274,42 @@ def render_home():
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.metric("Total Orders",    f"{len(df):,}")
+        st.metric("Total Orders", f"{len(df):,}")
     with c2:
-        st.metric("GMV",             f"R$ {df['payment_value'].sum():,.0f}")
+        st.metric("GMV", f"R$ {df['payment_value'].sum():,.0f}")
     with c3:
         st.metric("Avg Order Value", f"R$ {df['payment_value'].mean():,.2f}")
     with c4:
-        st.metric("Late Rate",       f"{delivered['is_late'].mean():.1%}")
+        st.metric("Late Rate", f"{delivered['is_late'].mean():.1%}")
     with c5:
-        st.metric("Avg Review",      f"{df['review_score'].mean():.2f} ⭐")
+        st.metric("Avg Review", f"{df['review_score'].mean():.2f} ⭐")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     col_left, col_right = st.columns([3, 2])
     with col_left:
         import plotly.graph_objects as go
+
         monthly = (
             df.groupby("purchase_ym")
             .agg(orders=("order_id", "count"), gmv=("payment_value", "sum"))
             .reset_index()
         )
         fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=monthly["purchase_ym"], y=monthly["orders"],
-            marker_color="#40c4ff", marker_opacity=0.8, name="Orders",
-        ))
+        fig.add_trace(
+            go.Bar(
+                x=monthly["purchase_ym"],
+                y=monthly["orders"],
+                marker_color="#40c4ff",
+                marker_opacity=0.8,
+                name="Orders",
+            )
+        )
         fig.update_layout(
-            title="Monthly Order Volume", height=300,
-            paper_bgcolor="#0f1923", plot_bgcolor="#0f1923",
+            title="Monthly Order Volume",
+            height=300,
+            paper_bgcolor="#0f1923",
+            plot_bgcolor="#0f1923",
             font=dict(family="Space Mono", color="#4e6278", size=10),
             margin=dict(t=40, b=20, l=10, r=10),
             xaxis=dict(showgrid=False, color="#4e6278"),
@@ -303,20 +321,29 @@ def render_home():
         st.markdown('<div class="section-header">Top States by GMV</div>', unsafe_allow_html=True)
         top_states = (
             df.groupby("customer_state")
-            .agg(gmv=("payment_value", "sum"), orders=("order_id", "count"),
-                 late_rate=("is_late", "mean"))
+            .agg(
+                gmv=("payment_value", "sum"),
+                orders=("order_id", "count"),
+                late_rate=("is_late", "mean"),
+            )
             .sort_values("gmv", ascending=False)
             .head(8)
             .reset_index()
         )
-        top_states["gmv_fmt"]   = top_states["gmv"].apply(lambda x: f"R$ {x:,.0f}")
-        top_states["late_fmt"]  = top_states["late_rate"].apply(lambda x: f"{x:.1%}")
+        top_states["gmv_fmt"] = top_states["gmv"].apply(lambda x: f"R$ {x:,.0f}")
+        top_states["late_fmt"] = top_states["late_rate"].apply(lambda x: f"{x:.1%}")
         st.dataframe(
-            top_states[["customer_state", "gmv_fmt", "orders", "late_fmt"]].rename(columns={
-                "customer_state": "State", "gmv_fmt": "GMV",
-                "orders": "Orders", "late_fmt": "Late Rate",
-            }),
-            hide_index=True, use_container_width=True, height=280,
+            top_states[["customer_state", "gmv_fmt", "orders", "late_fmt"]].rename(
+                columns={
+                    "customer_state": "State",
+                    "gmv_fmt": "GMV",
+                    "orders": "Orders",
+                    "late_fmt": "Late Rate",
+                }
+            ),
+            hide_index=True,
+            use_container_width=True,
+            height=280,
         )
 
 

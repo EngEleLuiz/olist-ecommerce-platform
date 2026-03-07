@@ -40,15 +40,15 @@ else:
 
 # Canonical Olist CSV filenames
 OLIST_FILES = {
-    "orders":            "olist_orders_dataset.csv",
-    "order_items":       "olist_order_items_dataset.csv",
-    "order_payments":    "olist_order_payments_dataset.csv",
-    "order_reviews":     "olist_order_reviews_dataset.csv",
-    "customers":         "olist_customers_dataset.csv",
-    "sellers":           "olist_sellers_dataset.csv",
-    "products":          "olist_products_dataset.csv",
-    "product_category":  "product_category_name_translation.csv",
-    "geolocation":       "olist_geolocation_dataset.csv",
+    "orders": "olist_orders_dataset.csv",
+    "order_items": "olist_order_items_dataset.csv",
+    "order_payments": "olist_order_payments_dataset.csv",
+    "order_reviews": "olist_order_reviews_dataset.csv",
+    "customers": "olist_customers_dataset.csv",
+    "sellers": "olist_sellers_dataset.csv",
+    "products": "olist_products_dataset.csv",
+    "product_category": "product_category_name_translation.csv",
+    "geolocation": "olist_geolocation_dataset.csv",
 }
 
 
@@ -73,8 +73,10 @@ class OlistLoader:
     def orders(self) -> pd.DataFrame:
         df = self._read("orders")
         ts_cols = [
-            "order_purchase_timestamp", "order_approved_at",
-            "order_delivered_carrier_date", "order_delivered_customer_date",
+            "order_purchase_timestamp",
+            "order_approved_at",
+            "order_delivered_carrier_date",
+            "order_delivered_customer_date",
             "order_estimated_delivery_date",
         ]
         for col in ts_cols:
@@ -128,26 +130,34 @@ class OlistLoader:
         """
         logger.info("Building order_features table...")
 
-        orders   = self.orders()
-        items    = self.order_items()
+        orders = self.orders()
+        items = self.order_items()
         payments = self.order_payments()
-        reviews  = self.order_reviews()
-        customers= self.customers()
-        sellers  = self.sellers()
+        reviews = self.order_reviews()
+        customers = self.customers()
+        sellers = self.sellers()
         products = self.products()
 
         # ── Aggregate items per order ─────────────────────────────────────────
-        items_agg = items.groupby("order_id").agg(
-            item_count       =("order_item_id",  "count"),
-            total_price      =("price",           "sum"),
-            total_freight    =("freight_value",   "sum"),
-            distinct_sellers =("seller_id",       "nunique"),
-            distinct_products=("product_id",      "nunique"),
-        ).reset_index()
+        items_agg = (
+            items.groupby("order_id")
+            .agg(
+                item_count=("order_item_id", "count"),
+                total_price=("price", "sum"),
+                total_freight=("freight_value", "sum"),
+                distinct_sellers=("seller_id", "nunique"),
+                distinct_products=("product_id", "nunique"),
+            )
+            .reset_index()
+        )
 
         # Most frequent category per order
         item_cat = (
-            items.merge(products[["product_id", "product_category_name_english"]], on="product_id", how="left")
+            items.merge(
+                products[["product_id", "product_category_name_english"]],
+                on="product_id",
+                how="left",
+            )
             .groupby("order_id")["product_category_name_english"]
             .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else "unknown")
             .reset_index()
@@ -156,16 +166,22 @@ class OlistLoader:
         items_agg = items_agg.merge(item_cat, on="order_id", how="left")
 
         # ── Aggregate payments per order ──────────────────────────────────────
-        pay_agg = payments.groupby("order_id").agg(
-            payment_value    =("payment_value",        "sum"),
-            max_installments =("payment_installments", "max"),
-            payment_types    =("payment_type",         "nunique"),
-        ).reset_index()
+        pay_agg = (
+            payments.groupby("order_id")
+            .agg(
+                payment_value=("payment_value", "sum"),
+                max_installments=("payment_installments", "max"),
+                payment_types=("payment_type", "nunique"),
+            )
+            .reset_index()
+        )
 
         # Most used payment type
         pay_type = (
             payments.sort_values("payment_value", ascending=False)
-            .groupby("order_id")["payment_type"].first().reset_index()
+            .groupby("order_id")["payment_type"]
+            .first()
+            .reset_index()
             .rename(columns={"payment_type": "main_payment_type"})
         )
         pay_agg = pay_agg.merge(pay_type, on="order_id", how="left")
@@ -181,27 +197,27 @@ class OlistLoader:
         # ── Seller state per order (via items → sellers) ──────────────────────
         seller_per_order = (
             items[["order_id", "seller_id"]]
-            .drop_duplicates("order_id")          # one seller per order (first)
-            .merge(sellers[["seller_id", "seller_state"]], on="seller_id", how="left")
-            [["order_id", "seller_state"]]
+            .drop_duplicates("order_id")  # one seller per order (first)
+            .merge(sellers[["seller_id", "seller_state"]], on="seller_id", how="left")[
+                ["order_id", "seller_state"]
+            ]
         )
 
         # ── Join everything onto orders ───────────────────────────────────────
         df = (
-            orders
-            .merge(items_agg,        on="order_id",   how="left")
-            .merge(pay_agg,          on="order_id",   how="left")
-            .merge(rev_agg,          on="order_id",   how="left")
-            .merge(customers,        on="customer_id", how="left")
-            .merge(seller_per_order, on="order_id",   how="left")
+            orders.merge(items_agg, on="order_id", how="left")
+            .merge(pay_agg, on="order_id", how="left")
+            .merge(rev_agg, on="order_id", how="left")
+            .merge(customers, on="customer_id", how="left")
+            .merge(seller_per_order, on="order_id", how="left")
         )
 
         # ── Derived columns ───────────────────────────────────────────────────
-        df["purchase_year"]  = df["order_purchase_timestamp"].dt.year
+        df["purchase_year"] = df["order_purchase_timestamp"].dt.year
         df["purchase_month"] = df["order_purchase_timestamp"].dt.month
-        df["purchase_dow"]   = df["order_purchase_timestamp"].dt.dayofweek
-        df["purchase_hour"]  = df["order_purchase_timestamp"].dt.hour
-        df["purchase_ym"]    = df["order_purchase_timestamp"].dt.to_period("M").astype(str)
+        df["purchase_dow"] = df["order_purchase_timestamp"].dt.dayofweek
+        df["purchase_hour"] = df["order_purchase_timestamp"].dt.hour
+        df["purchase_ym"] = df["order_purchase_timestamp"].dt.to_period("M").astype(str)
 
         df["estimated_days"] = (
             df["order_estimated_delivery_date"] - df["order_purchase_timestamp"]
@@ -212,11 +228,11 @@ class OlistLoader:
         ).dt.days
 
         df["delay_days"] = (df["actual_days"] - df["estimated_days"]).clip(lower=0)
-        df["is_late"]    = (df["delay_days"] > 0).astype(int)
+        df["is_late"] = (df["delay_days"] > 0).astype(int)
 
         df["freight_ratio"] = (
-            df["total_freight"] / df["total_price"].replace(0, float("nan"))
-        ).fillna(0).clip(0, 1)
+            (df["total_freight"] / df["total_price"].replace(0, float("nan"))).fillna(0).clip(0, 1)
+        )
 
         logger.info(f"order_features: {len(df):,} rows, {len(df.columns)} columns")
         return df
@@ -229,13 +245,17 @@ class OlistLoader:
 
         snapshot_date = df["order_purchase_timestamp"].max() + pd.Timedelta(days=1)
 
-        rfm = df.groupby("customer_unique_id").agg(
-            frequency     =("order_id",                "count"),
-            recency_days  =("order_purchase_timestamp", lambda x: (snapshot_date - x.max()).days),
-            T_days        =("order_purchase_timestamp", lambda x: (snapshot_date - x.min()).days),
-            monetary_mean =("payment_value",            "mean"),
-            total_spend   =("payment_value",            "sum"),
-        ).reset_index()
+        rfm = (
+            df.groupby("customer_unique_id")
+            .agg(
+                frequency=("order_id", "count"),
+                recency_days=("order_purchase_timestamp", lambda x: (snapshot_date - x.max()).days),
+                T_days=("order_purchase_timestamp", lambda x: (snapshot_date - x.min()).days),
+                monetary_mean=("payment_value", "mean"),
+                total_spend=("payment_value", "sum"),
+            )
+            .reset_index()
+        )
 
         rfm["frequency_repeat"] = (rfm["frequency"] - 1).clip(lower=0)
         return rfm
@@ -262,17 +282,19 @@ class OlistLoader:
         orders = self.orders()
         if orders.empty or "order_status" not in orders.columns:
             return {
-                "total_orders": 0, "delivered": 0,
-                "date_range": ("N/A", "N/A"), "files_loaded": len(self._available),
+                "total_orders": 0,
+                "delivered": 0,
+                "date_range": ("N/A", "N/A"),
+                "files_loaded": len(self._available),
             }
         return {
-            "total_orders":    len(orders),
-            "delivered":       int((orders["order_status"] == "delivered").sum()),
-            "date_range":      (
+            "total_orders": len(orders),
+            "delivered": int((orders["order_status"] == "delivered").sum()),
+            "date_range": (
                 str(orders["order_purchase_timestamp"].min().date()),
                 str(orders["order_purchase_timestamp"].max().date()),
             ),
-            "files_loaded":    len(self._available),
+            "files_loaded": len(self._available),
         }
 
     # ── Internals ─────────────────────────────────────────────────────────────

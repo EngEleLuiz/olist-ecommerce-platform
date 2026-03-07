@@ -65,7 +65,7 @@ FEATURES = [
     "avg_product_weight_g",
     "is_peak_season",
     "is_weekend_purchase",
-    "state_seller_late_rate",    # state-level seller reliability proxy
+    "state_seller_late_rate",  # state-level seller reliability proxy
 ]
 
 CAT_FEATURES = ["main_category", "main_payment_type", "customer_state", "customer_region"]
@@ -81,11 +81,11 @@ class DeliveryDelayModel:
     """
 
     def __init__(self, n_trials: int = 30, random_state: int = 42) -> None:
-        self.n_trials     = n_trials
+        self.n_trials = n_trials
         self.random_state = random_state
-        self.model:      XGBClassifier | None = None
-        self.threshold:  float = 0.5
-        self.encoders:   dict[str, LabelEncoder] = {}
+        self.model: XGBClassifier | None = None
+        self.threshold: float = 0.5
+        self.encoders: dict[str, LabelEncoder] = {}
         self.feature_names: list[str] = []
         self._shap_values: np.ndarray | None = None
 
@@ -100,16 +100,14 @@ class DeliveryDelayModel:
 
         # Chronological split — 70 / 15 / 15
         n = len(df)
-        i_val  = int(n * 0.70)
+        i_val = int(n * 0.70)
         i_test = int(n * 0.85)
 
-        X_train, y_train = X.iloc[:i_val],  y.iloc[:i_val]
-        X_val,   y_val   = X.iloc[i_val:i_test], y.iloc[i_val:i_test]
-        X_test,  y_test  = X.iloc[i_test:], y.iloc[i_test:]
+        X_train, y_train = X.iloc[:i_val], y.iloc[:i_val]
+        X_val, y_val = X.iloc[i_val:i_test], y.iloc[i_val:i_test]
+        X_test, y_test = X.iloc[i_test:], y.iloc[i_test:]
 
-        logger.info(
-            f"Split — train: {len(X_train):,}  val: {len(X_val):,}  test: {len(X_test):,}"
-        )
+        logger.info(f"Split — train: {len(X_train):,}  val: {len(X_val):,}  test: {len(X_test):,}")
 
         # Class weight for imbalanced labels
         scale_pos = float((y_train == 0).sum() / (y_train == 1).sum())
@@ -130,7 +128,8 @@ class DeliveryDelayModel:
                 verbosity=0,
             )
             self.model.fit(
-                X_train, y_train,
+                X_train,
+                y_train,
                 eval_set=[(X_val, y_val)],
                 verbose=False,
             )
@@ -165,23 +164,23 @@ class DeliveryDelayModel:
         df_prep = self._prepare(df)
         X = df_prep[self.feature_names]
 
-        proba  = self.model.predict_proba(X)[:, 1]
+        proba = self.model.predict_proba(X)[:, 1]
         labels = (proba >= self.threshold).astype(int)
 
         result = df[["order_id"]].copy() if "order_id" in df.columns else pd.DataFrame()
         result["delay_probability"] = proba
-        result["predicted_late"]    = labels
-        result["confidence"]        = np.where(labels == 1, proba, 1 - proba)
+        result["predicted_late"] = labels
+        result["confidence"] = np.where(labels == 1, proba, 1 - proba)
         return result
 
     def load(self, path: Path | None = None) -> None:
         path = path or MODEL_DIR / "delivery_delay_model.pkl"
         with open(path, "rb") as f:
             state = pickle.load(f)
-        self.model        = state["model"]
-        self.threshold    = state["threshold"]
-        self.encoders     = state["encoders"]
-        self.feature_names= state["feature_names"]
+        self.model = state["model"]
+        self.threshold = state["threshold"]
+        self.encoders = state["encoders"]
+        self.feature_names = state["feature_names"]
         logger.info(f"Loaded delivery delay model from {path}")
 
     def top_features(self, n: int = 10) -> pd.DataFrame:
@@ -220,8 +219,11 @@ class DeliveryDelayModel:
                 df[col] = self.encoders[col].fit_transform(df[col].astype(str).fillna("unknown"))
             else:
                 known = set(self.encoders[col].classes_)
-                df[col] = df[col].astype(str).fillna("unknown").apply(
-                    lambda x: x if x in known else "unknown"
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .fillna("unknown")
+                    .apply(lambda x: x if x in known else "unknown")
                 )
                 df[col] = self.encoders[col].transform(df[col])
 
@@ -233,25 +235,31 @@ class DeliveryDelayModel:
         df[all_features] = df[all_features].fillna(0)
 
         self.feature_names = all_features
-        return df.sort_values("order_purchase_timestamp") if "order_purchase_timestamp" in df.columns else df
+        return (
+            df.sort_values("order_purchase_timestamp")
+            if "order_purchase_timestamp" in df.columns
+            else df
+        )
 
     def _tune(
         self,
-        X_train: pd.DataFrame, y_train: pd.Series,
-        X_val:   pd.DataFrame, y_val:   pd.Series,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        X_val: pd.DataFrame,
+        y_val: pd.Series,
         scale_pos: float,
     ) -> dict[str, Any]:
         def objective(trial: optuna.Trial) -> float:
             params = {
-                "n_estimators":       trial.suggest_int("n_estimators", 100, 600),
-                "max_depth":          trial.suggest_int("max_depth", 3, 8),
-                "learning_rate":      trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
-                "subsample":          trial.suggest_float("subsample", 0.6, 1.0),
-                "colsample_bytree":   trial.suggest_float("colsample_bytree", 0.6, 1.0),
-                "min_child_weight":   trial.suggest_int("min_child_weight", 1, 10),
-                "gamma":              trial.suggest_float("gamma", 0, 5),
-                "reg_alpha":          trial.suggest_float("reg_alpha", 0, 2),
-                "reg_lambda":         trial.suggest_float("reg_lambda", 0, 2),
+                "n_estimators": trial.suggest_int("n_estimators", 100, 600),
+                "max_depth": trial.suggest_int("max_depth", 3, 8),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+                "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+                "gamma": trial.suggest_float("gamma", 0, 5),
+                "reg_alpha": trial.suggest_float("reg_alpha", 0, 2),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0, 2),
             }
             m = XGBClassifier(
                 **params,
@@ -264,8 +272,9 @@ class DeliveryDelayModel:
             proba = m.predict_proba(X_val)[:, 1]
             return average_precision_score(y_val, proba)
 
-        study = optuna.create_study(direction="maximize",
-                                    sampler=optuna.samplers.TPESampler(seed=self.random_state))
+        study = optuna.create_study(
+            direction="maximize", sampler=optuna.samplers.TPESampler(seed=self.random_state)
+        )
         study.optimize(objective, n_trials=self.n_trials, show_progress_bar=False)
         logger.info(f"Best Optuna AP: {study.best_value:.4f}")
         return study.best_params
@@ -280,16 +289,16 @@ class DeliveryDelayModel:
         return best_t
 
     def _evaluate(self, X_test: pd.DataFrame, y_test: pd.Series) -> dict[str, float]:
-        proba  = self.model.predict_proba(X_test)[:, 1]
+        proba = self.model.predict_proba(X_test)[:, 1]
         labels = (proba >= self.threshold).astype(int)
         report = classification_report(y_test, labels, output_dict=True, zero_division=0)
         logger.info("\n" + classification_report(y_test, labels, zero_division=0))
         return {
-            "auc_roc":       float(roc_auc_score(y_test, proba)),
+            "auc_roc": float(roc_auc_score(y_test, proba)),
             "avg_precision": float(average_precision_score(y_test, proba)),
-            "f1":            float(f1_score(y_test, labels, zero_division=0)),
-            "precision":     float(report["1"]["precision"]),
-            "recall":        float(report["1"]["recall"]),
+            "f1": float(f1_score(y_test, labels, zero_division=0)),
+            "precision": float(report["1"]["precision"]),
+            "recall": float(report["1"]["recall"]),
         }
 
     def _compute_shap(self, X_sample: pd.DataFrame) -> None:
@@ -300,12 +309,15 @@ class DeliveryDelayModel:
     def _save(self) -> None:
         path = MODEL_DIR / "delivery_delay_model.pkl"
         with open(path, "wb") as f:
-            pickle.dump({
-                "model":         self.model,
-                "threshold":     self.threshold,
-                "encoders":      self.encoders,
-                "feature_names": self.feature_names,
-            }, f)
+            pickle.dump(
+                {
+                    "model": self.model,
+                    "threshold": self.threshold,
+                    "encoders": self.encoders,
+                    "feature_names": self.feature_names,
+                },
+                f,
+            )
         # Save threshold separately for the dbt seed update script
         with open(MODEL_DIR / "delivery_delay_threshold.json", "w") as f:
             json.dump({"threshold": self.threshold}, f)

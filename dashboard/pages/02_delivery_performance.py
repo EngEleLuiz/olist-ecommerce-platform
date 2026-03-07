@@ -2,38 +2,44 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import streamlit as st
 from app import get_loader, render_sidebar
 from dashboard.charts import (
-    delay_histogram, late_rate_by_state, estimated_vs_actual, sla_donut,
+    delay_histogram,
+    late_rate_by_state,
+    estimated_vs_actual,
+    sla_donut,
 )
 
 render_sidebar()
 
 st.markdown("# 🚚 Delivery Performance")
-st.markdown("<p style='color:#4e6278;margin-top:-8px;'>On-time rates, delay patterns and SLA compliance</p>",
-            unsafe_allow_html=True)
+st.markdown(
+    "<p style='color:#4e6278;margin-top:-8px;'>On-time rates, delay patterns and SLA compliance</p>",
+    unsafe_allow_html=True,
+)
 st.markdown("<br>", unsafe_allow_html=True)
 
-loader   = get_loader()
-df       = loader.order_features()
-delivered= df[df["order_status"] == "delivered"].dropna(subset=["delay_days"])
+loader = get_loader()
+df = loader.order_features()
+delivered = df[df["order_status"] == "delivered"].dropna(subset=["delay_days"])
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
-late_rate    = delivered["is_late"].mean()
-avg_delay    = delivered["delay_days"].mean()
+late_rate = delivered["is_late"].mean()
+avg_delay = delivered["delay_days"].mean()
 median_delay = delivered["delay_days"].median()
-on_time_pct  = 1 - late_rate
-p95_delay    = delivered["delay_days"].quantile(0.95)
+on_time_pct = 1 - late_rate
+p95_delay = delivered["delay_days"].quantile(0.95)
 
 c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("On-Time Rate",     f"{on_time_pct:.1%}")
-c2.metric("Late Rate",        f"{late_rate:.1%}")
-c3.metric("Avg Delay",        f"{avg_delay:.1f} days")
-c4.metric("Median Delay",     f"{median_delay:.1f} days")
-c5.metric("P95 Delay",        f"{p95_delay:.0f} days")
+c1.metric("On-Time Rate", f"{on_time_pct:.1%}")
+c2.metric("Late Rate", f"{late_rate:.1%}")
+c3.metric("Avg Delay", f"{avg_delay:.1f} days")
+c4.metric("Median Delay", f"{median_delay:.1f} days")
+c5.metric("P95 Delay", f"{p95_delay:.0f} days")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -74,33 +80,44 @@ if len(filtered) == 0:
     st.warning("No data for selected filters.")
 else:
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Orders",        f"{len(filtered):,}")
-    m2.metric("Late Rate",     f"{filtered['is_late'].mean():.1%}")
-    m3.metric("Avg Delay",     f"{filtered['delay_days'].mean():.1f}d")
-    m4.metric("Avg Review",    f"{filtered['review_score'].mean():.2f} ⭐")
+    m1.metric("Orders", f"{len(filtered):,}")
+    m2.metric("Late Rate", f"{filtered['is_late'].mean():.1%}")
+    m3.metric("Avg Delay", f"{filtered['delay_days'].mean():.1f}d")
+    m4.metric("Avg Review", f"{filtered['review_score'].mean():.2f} ⭐")
 
     # Monthly trend for selection
     import plotly.graph_objects as go
+
     monthly_late = (
         filtered.groupby("purchase_ym")
-        .agg(late_rate=("is_late","mean"), orders=("order_id","count"))
+        .agg(late_rate=("is_late", "mean"), orders=("order_id", "count"))
         .reset_index()
     )
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=monthly_late["purchase_ym"], y=monthly_late["late_rate"] * 100,
-        mode="lines+markers", line=dict(color="#ffab40", width=2),
-        name="Late Rate %",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=monthly_late["purchase_ym"],
+            y=monthly_late["late_rate"] * 100,
+            mode="lines+markers",
+            line=dict(color="#ffab40", width=2),
+            name="Late Rate %",
+        )
+    )
     fig.update_layout(
         title=f"Monthly Late Rate — {sel_state} / {sel_cat}",
-        paper_bgcolor="#0f1923", plot_bgcolor="#0f1923",
+        paper_bgcolor="#0f1923",
+        plot_bgcolor="#0f1923",
         font=dict(family="Space Mono", color="#4e6278", size=10),
-        margin=dict(t=40,b=20,l=10,r=10), height=300,
-        xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#1e2d3d"),
+        margin=dict(t=40, b=20, l=10, r=10),
+        height=300,
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#1e2d3d"),
     )
-    fig.add_hline(y=filtered["is_late"].mean() * 100,
-                  line_dash="dash", line_color="#40c4ff",
-                  annotation_text=f"Avg {filtered['is_late'].mean():.1%}",
-                  annotation_font_color="#40c4ff")
+    fig.add_hline(
+        y=filtered["is_late"].mean() * 100,
+        line_dash="dash",
+        line_color="#40c4ff",
+        annotation_text=f"Avg {filtered['is_late'].mean():.1%}",
+        annotation_font_color="#40c4ff",
+    )
     st.plotly_chart(fig, use_container_width=True)

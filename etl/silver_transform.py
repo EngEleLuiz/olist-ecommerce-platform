@@ -33,6 +33,7 @@ try:
     from awsglue.job import Job
     from awsglue.utils import getResolvedOptions
     from pyspark.context import SparkContext
+
     IS_GLUE = True
 except ImportError:
     IS_GLUE = False
@@ -44,13 +45,33 @@ from pyspark.sql.types import DoubleType
 
 # ── Brazilian state → region mapping ─────────────────────────────────────────
 BR_REGIONS = {
-    "SP": "Sudeste", "RJ": "Sudeste", "MG": "Sudeste", "ES": "Sudeste",
-    "RS": "Sul",     "PR": "Sul",     "SC": "Sul",
-    "BA": "Nordeste","PE": "Nordeste","CE": "Nordeste","MA": "Nordeste",
-    "PB": "Nordeste","RN": "Nordeste","AL": "Nordeste","SE": "Nordeste","PI": "Nordeste",
-    "PA": "Norte",   "AM": "Norte",   "RO": "Norte",   "AC": "Norte",
-    "AP": "Norte",   "RR": "Norte",   "TO": "Norte",
-    "DF": "Centro-Oeste","GO": "Centro-Oeste","MT": "Centro-Oeste","MS": "Centro-Oeste",
+    "SP": "Sudeste",
+    "RJ": "Sudeste",
+    "MG": "Sudeste",
+    "ES": "Sudeste",
+    "RS": "Sul",
+    "PR": "Sul",
+    "SC": "Sul",
+    "BA": "Nordeste",
+    "PE": "Nordeste",
+    "CE": "Nordeste",
+    "MA": "Nordeste",
+    "PB": "Nordeste",
+    "RN": "Nordeste",
+    "AL": "Nordeste",
+    "SE": "Nordeste",
+    "PI": "Nordeste",
+    "PA": "Norte",
+    "AM": "Norte",
+    "RO": "Norte",
+    "AC": "Norte",
+    "AP": "Norte",
+    "RR": "Norte",
+    "TO": "Norte",
+    "DF": "Centro-Oeste",
+    "GO": "Centro-Oeste",
+    "MT": "Centro-Oeste",
+    "MS": "Centro-Oeste",
 }
 
 
@@ -59,8 +80,7 @@ def get_spark(local: bool = False) -> SparkSession:
         sc = SparkContext()
         return GlueContext(sc).spark_session
     return (
-        SparkSession.builder
-        .appName("olist-silver-transform")
+        SparkSession.builder.appName("olist-silver-transform")
         .config("spark.sql.shuffle.partitions", "8")
         .getOrCreate()
     )
@@ -71,59 +91,68 @@ def transform_orders(spark: SparkSession, bronze_path: str) -> DataFrame:
     df = spark.read.parquet(f"{bronze_path}/orders")
 
     ts_fmt = "yyyy-MM-dd HH:mm:ss"
-    df = df.withColumns({
-        "order_purchase_timestamp":       F.to_timestamp("order_purchase_timestamp",       ts_fmt),
-        "order_approved_at":              F.to_timestamp("order_approved_at",              ts_fmt),
-        "order_delivered_carrier_date":   F.to_timestamp("order_delivered_carrier_date",   ts_fmt),
-        "order_delivered_customer_date":  F.to_timestamp("order_delivered_customer_date",  ts_fmt),
-        "order_estimated_delivery_date":  F.to_timestamp("order_estimated_delivery_date",  ts_fmt),
-    })
+    df = df.withColumns(
+        {
+            "order_purchase_timestamp": F.to_timestamp("order_purchase_timestamp", ts_fmt),
+            "order_approved_at": F.to_timestamp("order_approved_at", ts_fmt),
+            "order_delivered_carrier_date": F.to_timestamp("order_delivered_carrier_date", ts_fmt),
+            "order_delivered_customer_date": F.to_timestamp(
+                "order_delivered_customer_date", ts_fmt
+            ),
+            "order_estimated_delivery_date": F.to_timestamp(
+                "order_estimated_delivery_date", ts_fmt
+            ),
+        }
+    )
 
     # Derived time features
-    df = df.withColumns({
-        "purchase_year":   F.year("order_purchase_timestamp"),
-        "purchase_month":  F.month("order_purchase_timestamp"),
-        "purchase_dow":    F.dayofweek("order_purchase_timestamp"),
-        "purchase_hour":   F.hour("order_purchase_timestamp"),
-        "purchase_ym":     F.date_format("order_purchase_timestamp", "yyyy-MM"),
-    })
+    df = df.withColumns(
+        {
+            "purchase_year": F.year("order_purchase_timestamp"),
+            "purchase_month": F.month("order_purchase_timestamp"),
+            "purchase_dow": F.dayofweek("order_purchase_timestamp"),
+            "purchase_hour": F.hour("order_purchase_timestamp"),
+            "purchase_ym": F.date_format("order_purchase_timestamp", "yyyy-MM"),
+        }
+    )
 
     # Delivery metrics
-    df = df.withColumns({
-        "estimated_days": (
-            F.datediff("order_estimated_delivery_date", "order_purchase_timestamp")
-        ),
-        "actual_days": (
-            F.datediff("order_delivered_customer_date", "order_purchase_timestamp")
-        ),
-    })
+    df = df.withColumns(
+        {
+            "estimated_days": (
+                F.datediff("order_estimated_delivery_date", "order_purchase_timestamp")
+            ),
+            "actual_days": (
+                F.datediff("order_delivered_customer_date", "order_purchase_timestamp")
+            ),
+        }
+    )
     df = df.withColumn(
-        "delay_days",
-        F.greatest(
-            F.col("actual_days") - F.col("estimated_days"),
-            F.lit(0)
-        )
+        "delay_days", F.greatest(F.col("actual_days") - F.col("estimated_days"), F.lit(0))
     )
     df = df.withColumn("is_late", (F.col("delay_days") > 0).cast("int"))
 
     # Approval speed
     df = df.withColumn(
         "approval_hours",
-        (F.unix_timestamp("order_approved_at") - F.unix_timestamp("order_purchase_timestamp")) / 3600
+        (F.unix_timestamp("order_approved_at") - F.unix_timestamp("order_purchase_timestamp"))
+        / 3600,
     )
 
     # Data quality flags
-    df = df.withColumns({
-        "dq_missing_approval":   F.col("order_approved_at").isNull().cast("int"),
-        "dq_missing_delivery":   F.col("order_delivered_customer_date").isNull().cast("int"),
-        "dq_negative_delay":     (F.col("delay_days") < 0).cast("int"),
-        "dq_extreme_delivery":   (F.col("actual_days") > 120).cast("int"),
-    })
+    df = df.withColumns(
+        {
+            "dq_missing_approval": F.col("order_approved_at").isNull().cast("int"),
+            "dq_missing_delivery": F.col("order_delivered_customer_date").isNull().cast("int"),
+            "dq_negative_delay": (F.col("delay_days") < 0).cast("int"),
+            "dq_extreme_delivery": (F.col("actual_days") > 120).cast("int"),
+        }
+    )
 
     dq_issues = df.filter(
-        (F.col("dq_missing_approval") == 1) |
-        (F.col("dq_negative_delay")   == 1) |
-        (F.col("dq_extreme_delivery") == 1)
+        (F.col("dq_missing_approval") == 1)
+        | (F.col("dq_negative_delay") == 1)
+        | (F.col("dq_extreme_delivery") == 1)
     ).count()
     logger.info(f"orders: {dq_issues:,} rows with DQ flags (kept, not dropped)")
 
@@ -132,9 +161,9 @@ def transform_orders(spark: SparkSession, bronze_path: str) -> DataFrame:
 
 def transform_order_items(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Aggregate items to order level and add product category."""
-    items    = spark.read.parquet(f"{bronze_path}/order_items")
+    items = spark.read.parquet(f"{bronze_path}/order_items")
     products = spark.read.parquet(f"{bronze_path}/products")
-    cat_map  = spark.read.parquet(f"{bronze_path}/product_category")
+    cat_map = spark.read.parquet(f"{bronze_path}/product_category")
 
     products = products.join(cat_map, on="product_category_name", how="left")
 
@@ -171,8 +200,7 @@ def transform_order_items(spark: SparkSession, bronze_path: str) -> DataFrame:
         .orderBy(F.desc("_cat_count"))
     )
     main_cat = (
-        item_cat
-        .withColumn("_rn", F.row_number().over(window))
+        item_cat.withColumn("_rn", F.row_number().over(window))
         .filter(F.col("_rn") == 1)
         .select("order_id", F.col("product_category_name_english").alias("main_category"))
     )
@@ -202,10 +230,7 @@ def transform_payments(spark: SparkSession, bronze_path: str) -> DataFrame:
     )
 
     # Dominant payment type
-    dom = (
-        df.groupBy("order_id", "payment_type")
-        .agg(F.sum("payment_value").alias("_v"))
-    )
+    dom = df.groupBy("order_id", "payment_type").agg(F.sum("payment_value").alias("_v"))
     w = (
         __import__("pyspark.sql.window", fromlist=["Window"])
         .Window.partitionBy("order_id")
@@ -224,8 +249,7 @@ def transform_reviews(spark: SparkSession, bronze_path: str) -> DataFrame:
     """Keep latest review per order, add sentiment bucket."""
     df = spark.read.parquet(f"{bronze_path}/order_reviews")
     df = df.withColumn(
-        "review_creation_date",
-        F.to_timestamp("review_creation_date", "yyyy-MM-dd HH:mm:ss")
+        "review_creation_date", F.to_timestamp("review_creation_date", "yyyy-MM-dd HH:mm:ss")
     )
 
     w = (
@@ -243,24 +267,23 @@ def transform_reviews(spark: SparkSession, bronze_path: str) -> DataFrame:
         "review_sentiment",
         F.when(F.col("review_score") >= 4, "positive")
         .when(F.col("review_score") == 3, "neutral")
-        .otherwise("negative")
+        .otherwise("negative"),
     )
     return df
 
 
 def build_silver_orders(spark: SparkSession, bronze_path: str, silver_path: str) -> None:
     """Join all silver tables into the main order-level silver table."""
-    orders   = transform_orders(spark, bronze_path)
-    items    = transform_order_items(spark, bronze_path)
+    orders = transform_orders(spark, bronze_path)
+    items = transform_order_items(spark, bronze_path)
     payments = transform_payments(spark, bronze_path)
-    reviews  = transform_reviews(spark, bronze_path)
-    customers= transform_customers(spark, bronze_path)
+    reviews = transform_reviews(spark, bronze_path)
+    customers = transform_customers(spark, bronze_path)
 
     silver = (
-        orders
-        .join(items,     on="order_id",    how="left")
-        .join(payments,  on="order_id",    how="left")
-        .join(reviews,   on="order_id",    how="left")
+        orders.join(items, on="order_id", how="left")
+        .join(payments, on="order_id", how="left")
+        .join(reviews, on="order_id", how="left")
         .join(customers, on="customer_id", how="left")
     )
 
@@ -269,16 +292,15 @@ def build_silver_orders(spark: SparkSession, bronze_path: str, silver_path: str)
         "freight_ratio",
         F.when(
             F.col("total_price") > 0,
-            (F.col("total_freight") / F.col("total_price")).cast(DoubleType())
-        ).otherwise(0.0)
+            (F.col("total_freight") / F.col("total_price")).cast(DoubleType()),
+        ).otherwise(0.0),
     )
 
     row_count = silver.count()
     logger.info(f"Silver orders: {row_count:,} rows, {len(silver.columns)} columns")
 
     (
-        silver.write
-        .mode("overwrite")
+        silver.write.mode("overwrite")
         .partitionBy("customer_state", "purchase_ym")
         .parquet(f"{silver_path}/orders")
     )
@@ -305,7 +327,7 @@ def run(
 if __name__ == "__main__":
     if IS_GLUE:
         args = getResolvedOptions(sys.argv, ["JOB_NAME", "bronze_bucket", "silver_bucket"])
-        job  = Job(GlueContext(SparkContext()))
+        job = Job(GlueContext(SparkContext()))
         run(
             bronze_path=f"s3://{args['bronze_bucket']}",
             silver_path=f"s3://{args['silver_bucket']}",
@@ -313,9 +335,9 @@ if __name__ == "__main__":
         job.commit()
     else:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--local",         action="store_true")
-        parser.add_argument("--bronze-path",   default="output/bronze")
-        parser.add_argument("--silver-path",   default="output/silver")
+        parser.add_argument("--local", action="store_true")
+        parser.add_argument("--bronze-path", default="output/bronze")
+        parser.add_argument("--silver-path", default="output/silver")
         a = parser.parse_args()
         run(
             bronze_path=a.bronze_path,

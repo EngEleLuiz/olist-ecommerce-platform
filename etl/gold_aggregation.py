@@ -33,6 +33,7 @@ try:
     from awsglue.job import Job
     from awsglue.utils import getResolvedOptions
     from pyspark.context import SparkContext
+
     IS_GLUE = True
 except ImportError:
     IS_GLUE = False
@@ -47,8 +48,7 @@ def get_spark(local: bool = False) -> SparkSession:
         sc = SparkContext()
         return GlueContext(sc).spark_session
     return (
-        SparkSession.builder
-        .appName("olist-gold-aggregation")
+        SparkSession.builder.appName("olist-gold-aggregation")
         .config("spark.sql.shuffle.partitions", "8")
         .getOrCreate()
     )
@@ -64,21 +64,40 @@ def build_gold_orders(silver: DataFrame) -> DataFrame:
 
     df = df.select(
         # Identity
-        "order_id", "customer_id", "customer_unique_id",
+        "order_id",
+        "customer_id",
+        "customer_unique_id",
         # Target variables
-        "is_late", "delay_days", "review_score", "review_sentiment",
+        "is_late",
+        "delay_days",
+        "review_score",
+        "review_sentiment",
         # Time
-        "order_purchase_timestamp", "purchase_year", "purchase_month",
-        "purchase_dow", "purchase_hour", "purchase_ym",
-        "estimated_days", "actual_days",
+        "order_purchase_timestamp",
+        "purchase_year",
+        "purchase_month",
+        "purchase_dow",
+        "purchase_hour",
+        "purchase_ym",
+        "estimated_days",
+        "actual_days",
         # Order financials
-        "total_price", "total_freight", "payment_value",
-        "freight_ratio", "max_installments", "main_payment_type",
+        "total_price",
+        "total_freight",
+        "payment_value",
+        "freight_ratio",
+        "max_installments",
+        "main_payment_type",
         # Items
-        "item_count", "distinct_sellers", "distinct_products",
-        "avg_product_weight_g", "main_category",
+        "item_count",
+        "distinct_sellers",
+        "distinct_products",
+        "avg_product_weight_g",
+        "main_category",
         # Geography
-        "customer_state", "customer_region", "customer_city",
+        "customer_state",
+        "customer_region",
+        "customer_city",
     )
 
     logger.info(f"gold_orders: {df.count():,} delivered orders")
@@ -112,8 +131,7 @@ def build_kpi_monthly(silver: DataFrame) -> DataFrame:
     # Month-over-month GMV growth per state
     w = Window.partitionBy("customer_state").orderBy("purchase_ym")
     monthly = monthly.withColumn(
-        "gmv_mom_growth",
-        (F.col("gmv") - F.lag("gmv", 1).over(w)) / F.lag("gmv", 1).over(w)
+        "gmv_mom_growth", (F.col("gmv") - F.lag("gmv", 1).over(w)) / F.lag("gmv", 1).over(w)
     )
 
     logger.info(f"gold_kpi_monthly: {monthly.count():,} rows")
@@ -127,17 +145,17 @@ def build_seller_performance(silver: DataFrame, items: DataFrame, sellers: DataF
     for the delivery delay model.
     """
     # Join items back to get per-seller order info
-    seller_orders = (
-        items.select("order_id", "seller_id", "price", "freight_value")
-        .join(
-            silver.select(
-                "order_id", "order_purchase_timestamp",
-                "is_late", "delay_days", "review_score",
-                "order_delivered_customer_date",
-            ),
-            on="order_id",
-            how="inner",
-        )
+    seller_orders = items.select("order_id", "seller_id", "price", "freight_value").join(
+        silver.select(
+            "order_id",
+            "order_purchase_timestamp",
+            "is_late",
+            "delay_days",
+            "review_score",
+            "order_delivered_customer_date",
+        ),
+        on="order_id",
+        how="inner",
     )
 
     seller_agg = seller_orders.groupBy("seller_id").agg(
@@ -165,7 +183,7 @@ def build_seller_performance(silver: DataFrame, items: DataFrame, sellers: DataF
         "seller_tier",
         F.when(F.col("total_revenue") >= q75, "top")
         .when(F.col("total_revenue") >= q25, "mid")
-        .otherwise("low")
+        .otherwise("low"),
     )
 
     logger.info(f"gold_seller_performance: {seller_agg.count():,} sellers")
@@ -175,10 +193,7 @@ def build_seller_performance(silver: DataFrame, items: DataFrame, sellers: DataF
 def build_category_demand(silver: DataFrame) -> DataFrame:
     """Weekly order volume by category and state — LightGBM training input."""
     df = silver.filter(F.col("order_status") == "delivered")
-    df = df.withColumn(
-        "week_start",
-        F.date_trunc("week", F.col("order_purchase_timestamp"))
-    )
+    df = df.withColumn("week_start", F.date_trunc("week", F.col("order_purchase_timestamp")))
 
     demand = df.groupBy("week_start", "customer_state", "main_category").agg(
         F.count("order_id").alias("order_count"),
@@ -191,8 +206,7 @@ def build_category_demand(silver: DataFrame) -> DataFrame:
     w = Window.partitionBy("customer_state", "main_category").orderBy("week_start")
     demand = demand.withColumn(
         "wow_growth",
-        (F.col("order_count") - F.lag("order_count", 1).over(w)) /
-        F.lag("order_count", 1).over(w)
+        (F.col("order_count") - F.lag("order_count", 1).over(w)) / F.lag("order_count", 1).over(w),
     )
 
     logger.info(f"gold_category_demand: {demand.count():,} rows")
@@ -207,15 +221,18 @@ def run(
     spark = get_spark(local=local)
 
     silver = spark.read.parquet(f"{silver_path}/orders")
-    items  = spark.read.parquet(f"{silver_path}/../bronze/order_items") if local \
-             else spark.read.parquet(f"{silver_path}/order_items")
-    sellers= spark.read.parquet(f"{silver_path}/sellers")
+    items = (
+        spark.read.parquet(f"{silver_path}/../bronze/order_items")
+        if local
+        else spark.read.parquet(f"{silver_path}/order_items")
+    )
+    sellers = spark.read.parquet(f"{silver_path}/sellers")
 
     # Build and write all four Gold tables
     tables = {
-        "gold_orders":          build_gold_orders(silver),
-        "gold_kpi_monthly":     build_kpi_monthly(silver),
-        "gold_seller_perf":     build_seller_performance(silver, items, sellers),
+        "gold_orders": build_gold_orders(silver),
+        "gold_kpi_monthly": build_kpi_monthly(silver),
+        "gold_seller_perf": build_seller_performance(silver, items, sellers),
         "gold_category_demand": build_category_demand(silver),
     }
 
@@ -231,7 +248,7 @@ def run(
 if __name__ == "__main__":
     if IS_GLUE:
         args = getResolvedOptions(sys.argv, ["JOB_NAME", "silver_bucket", "gold_bucket"])
-        job  = Job(GlueContext(SparkContext()))
+        job = Job(GlueContext(SparkContext()))
         run(
             silver_path=f"s3://{args['silver_bucket']}",
             gold_path=f"s3://{args['gold_bucket']}",
@@ -239,9 +256,9 @@ if __name__ == "__main__":
         job.commit()
     else:
         parser = argparse.ArgumentParser()
-        parser.add_argument("--local",        action="store_true")
-        parser.add_argument("--silver-path",  default="output/silver")
-        parser.add_argument("--gold-path",    default="output/gold")
+        parser.add_argument("--local", action="store_true")
+        parser.add_argument("--silver-path", default="output/silver")
+        parser.add_argument("--gold-path", default="output/gold")
         a = parser.parse_args()
         run(
             silver_path=a.silver_path,

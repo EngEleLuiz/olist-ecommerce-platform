@@ -41,16 +41,16 @@ FORECAST_HORIZON = 4  # weeks ahead
 
 # Brazilian public holidays (month-day tuples) — major shopping events
 BR_HOLIDAYS = {
-    (1, 1),   # Ano Novo
+    (1, 1),  # Ano Novo
     (2, 13),  # Carnaval (approx)
     (4, 21),  # Tiradentes
-    (5, 1),   # Dia do Trabalho
-    (9, 7),   # Independência
-    (10, 12), # Nossa Senhora Aparecida
+    (5, 1),  # Dia do Trabalho
+    (9, 7),  # Independência
+    (10, 12),  # Nossa Senhora Aparecida
     (11, 2),  # Finados
-    (11, 15), # Proclamação da República
-    (11, 28), # Black Friday (approx)
-    (12, 25), # Natal
+    (11, 15),  # Proclamação da República
+    (11, 28),  # Black Friday (approx)
+    (12, 25),  # Natal
 }
 
 
@@ -67,10 +67,10 @@ class DemandForecastModel:
         forecast_horizon: int = FORECAST_HORIZON,
         n_splits: int = 5,
     ) -> None:
-        self.horizon   = forecast_horizon
-        self.n_splits  = n_splits
-        self.models:   dict[str, LGBMRegressor] = {}  # one per quantile
-        self.encoders: dict[str, LabelEncoder]  = {}
+        self.horizon = forecast_horizon
+        self.n_splits = n_splits
+        self.models: dict[str, LGBMRegressor] = {}  # one per quantile
+        self.encoders: dict[str, LabelEncoder] = {}
         self.feature_cols: list[str] = []
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -96,11 +96,13 @@ class DemandForecastModel:
         with mlflow.start_run(run_name="demand_forecast_lgbm"):
             mlflow.set_tracking_uri(MLFLOW_URI)
             mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_DEMAND", "olist-demand-forecast"))
-            mlflow.log_params({
-                "horizon_weeks": self.horizon,
-                "n_splits":      self.n_splits,
-                "n_series":      demand.groupby(["customer_state", "category"]).ngroups,
-            })
+            mlflow.log_params(
+                {
+                    "horizon_weeks": self.horizon,
+                    "n_splits": self.n_splits,
+                    "n_series": demand.groupby(["customer_state", "category"]).ngroups,
+                }
+            )
 
             # Build feature matrix
             df = self._build_features(demand)
@@ -118,10 +120,7 @@ class DemandForecastModel:
             mlflow.log_param("forecast_rows", len(forecast))
 
             self._save()
-            logger.info(
-                f"Forecast complete — "
-                f"{len(forecast):,} rows × {self.horizon} weeks ahead"
-            )
+            logger.info(f"Forecast complete — {len(forecast):,} rows × {self.horizon} weeks ahead")
 
         return forecast
 
@@ -129,8 +128,8 @@ class DemandForecastModel:
         path = path or MODEL_DIR / "demand_forecast_model.pkl"
         with open(path, "rb") as f:
             state = pickle.load(f)
-        self.models       = state["models"]
-        self.encoders     = state["encoders"]
+        self.models = state["models"]
+        self.encoders = state["encoders"]
         self.feature_cols = state["feature_cols"]
         logger.info(f"Loaded demand forecast model from {path}")
 
@@ -163,21 +162,21 @@ class DemandForecastModel:
         # Rolling stats (on lag-1 to avoid leakage)
         for window in [4, 8]:
             demand[f"roll_mean_{window}w"] = (
-                grp["order_count"].shift(1).transform(
-                    lambda x: x.rolling(window, min_periods=1).mean()
-                )
+                grp["order_count"]
+                .shift(1)
+                .transform(lambda x: x.rolling(window, min_periods=1).mean())
             )
             demand[f"roll_std_{window}w"] = (
-                grp["order_count"].shift(1).transform(
-                    lambda x: x.rolling(window, min_periods=1).std().fillna(0)
-                )
+                grp["order_count"]
+                .shift(1)
+                .transform(lambda x: x.rolling(window, min_periods=1).std().fillna(0))
             )
 
         # Trend: slope over last 4 weeks
         def rolling_slope(series: pd.Series, w: int = 4) -> pd.Series:
             out = series.copy() * 0.0
             for i in range(w, len(series)):
-                y = series.iloc[i - w:i].values
+                y = series.iloc[i - w : i].values
                 if np.std(y) > 0:
                     out.iloc[i] = np.polyfit(range(w), y, 1)[0]
             return out
@@ -188,18 +187,19 @@ class DemandForecastModel:
 
         # Time features
         demand["week_of_year"] = demand["week_start"].dt.isocalendar().week.astype(int)
-        demand["month"]        = demand["week_start"].dt.month
-        demand["quarter"]      = demand["week_start"].dt.quarter
-        demand["year"]         = demand["week_start"].dt.year
+        demand["month"] = demand["week_start"].dt.month
+        demand["quarter"] = demand["week_start"].dt.quarter
+        demand["year"] = demand["week_start"].dt.year
 
         # Holiday flag
         demand["is_holiday_week"] = demand["week_start"].apply(
-            lambda d: int(any(
-                (d + pd.Timedelta(days=i)).month == m and
-                (d + pd.Timedelta(days=i)).day   == day
-                for i in range(7)
-                for m, day in BR_HOLIDAYS
-            ))
+            lambda d: int(
+                any(
+                    (d + pd.Timedelta(days=i)).month == m and (d + pd.Timedelta(days=i)).day == day
+                    for i in range(7)
+                    for m, day in BR_HOLIDAYS
+                )
+            )
         )
 
         # Peak season (Nov-Dec)
@@ -217,8 +217,8 @@ class DemandForecastModel:
 
     def _fill_grid(self, demand: pd.DataFrame) -> pd.DataFrame:
         """Fill missing week × state × category combinations with 0."""
-        weeks      = demand["week_start"].unique()
-        states     = demand["customer_state"].unique()
+        weeks = demand["week_start"].unique()
+        states = demand["customer_state"].unique()
         categories = demand["category"].unique()
 
         full_idx = pd.MultiIndex.from_product(
@@ -237,17 +237,28 @@ class DemandForecastModel:
     @property
     def _feature_cols(self) -> list[str]:
         return [
-            "lag_1w", "lag_2w", "lag_4w", "lag_8w",
-            "roll_mean_4w", "roll_std_4w", "roll_mean_8w", "roll_std_8w",
-            "trend_4w", "week_of_year", "month", "quarter",
-            "is_holiday_week", "is_peak_season",
-            "customer_state_enc", "category_enc",
+            "lag_1w",
+            "lag_2w",
+            "lag_4w",
+            "lag_8w",
+            "roll_mean_4w",
+            "roll_std_4w",
+            "roll_mean_8w",
+            "roll_std_8w",
+            "trend_4w",
+            "week_of_year",
+            "month",
+            "quarter",
+            "is_holiday_week",
+            "is_peak_season",
+            "customer_state_enc",
+            "category_enc",
         ]
 
     def _walk_forward_cv(self, df: pd.DataFrame) -> dict[str, float]:
         """Expanding-window cross-validation."""
-        weeks  = sorted(df["week_start"].unique())
-        n      = len(weeks)
+        weeks = sorted(df["week_start"].unique())
+        n = len(weeks)
         fold_size = n // (self.n_splits + 1)
 
         all_mae, all_mape = [], []
@@ -259,20 +270,27 @@ class DemandForecastModel:
 
             train_end = weeks[cutoff_idx]
             val_start = weeks[cutoff_idx]
-            val_end   = weeks[min(cutoff_idx + self.horizon, n - 1)]
+            val_end = weeks[min(cutoff_idx + self.horizon, n - 1)]
 
-            X_train = df[df["week_start"] <  train_end][self._feature_cols].fillna(0)
-            y_train = df[df["week_start"] <  train_end]["order_count"]
-            X_val   = df[(df["week_start"] >= val_start) & (df["week_start"] <= val_end)][self._feature_cols].fillna(0)
-            y_val   = df[(df["week_start"] >= val_start) & (df["week_start"] <= val_end)]["order_count"]
+            X_train = df[df["week_start"] < train_end][self._feature_cols].fillna(0)
+            y_train = df[df["week_start"] < train_end]["order_count"]
+            X_val = df[(df["week_start"] >= val_start) & (df["week_start"] <= val_end)][
+                self._feature_cols
+            ].fillna(0)
+            y_val = df[(df["week_start"] >= val_start) & (df["week_start"] <= val_end)][
+                "order_count"
+            ]
 
             if len(X_train) < 100 or len(X_val) == 0:
                 continue
 
             m = LGBMRegressor(
-                n_estimators=200, learning_rate=0.05,
-                num_leaves=31, min_child_samples=20,
-                random_state=42, verbose=-1,
+                n_estimators=200,
+                learning_rate=0.05,
+                num_leaves=31,
+                min_child_samples=20,
+                random_state=42,
+                verbose=-1,
             )
             m.fit(X_train, y_train)
             preds = np.clip(m.predict(X_val), 0, None)
@@ -281,7 +299,7 @@ class DemandForecastModel:
             all_mape.append(mean_absolute_percentage_error(y_val + 1e-6, preds + 1e-6))
 
         return {
-            "mae":  float(np.mean(all_mae))  if all_mae  else 0.0,
+            "mae": float(np.mean(all_mae)) if all_mae else 0.0,
             "mape": float(np.mean(all_mape)) if all_mape else 0.0,
         }
 
@@ -325,15 +343,21 @@ class DemandForecastModel:
             next_week = last_week + pd.Timedelta(weeks=step)
 
             # Build a row for each state × category for next_week
-            states     = demand["customer_state"].unique()
+            states = demand["customer_state"].unique()
             categories = demand["category"].unique()
-            next_rows  = pd.DataFrame([
-                {"week_start": next_week, "customer_state": s, "category": c, "order_count": 0}
-                for s in states for c in categories
-            ])
+            next_rows = pd.DataFrame(
+                [
+                    {"week_start": next_week, "customer_state": s, "category": c, "order_count": 0}
+                    for s in states
+                    for c in categories
+                ]
+            )
 
             # Append to current and recompute features
-            extended = pd.concat([demand, next_rows[["week_start", "customer_state", "category", "order_count"]]], ignore_index=True)
+            extended = pd.concat(
+                [demand, next_rows[["week_start", "customer_state", "category", "order_count"]]],
+                ignore_index=True,
+            )
             extended_feats = self._build_features(extended)
             pred_rows = extended_feats[extended_feats["week_start"] == next_week].copy()
 
@@ -346,24 +370,42 @@ class DemandForecastModel:
 
             pred_rows["forecast_week"] = step
             pred_rows["forecast_date"] = next_week
-            forecasts.append(pred_rows[["customer_state", "category", "forecast_date",
-                                         "forecast_week", "forecast_p10", "forecast_p50",
-                                         "forecast_p90"]])
+            forecasts.append(
+                pred_rows[
+                    [
+                        "customer_state",
+                        "category",
+                        "forecast_date",
+                        "forecast_week",
+                        "forecast_p10",
+                        "forecast_p50",
+                        "forecast_p90",
+                    ]
+                ]
+            )
 
             # Feed p50 back for next step
-            demand = pd.concat([demand, pred_rows[["week_start", "customer_state",
-                                                     "category"]].assign(
-                order_count=pred_rows["forecast_p50"].values
-            )], ignore_index=True)
+            demand = pd.concat(
+                [
+                    demand,
+                    pred_rows[["week_start", "customer_state", "category"]].assign(
+                        order_count=pred_rows["forecast_p50"].values
+                    ),
+                ],
+                ignore_index=True,
+            )
 
         return pd.concat(forecasts, ignore_index=True) if forecasts else pd.DataFrame()
 
     def _save(self) -> None:
         path = MODEL_DIR / "demand_forecast_model.pkl"
         with open(path, "wb") as f:
-            pickle.dump({
-                "models":       self.models,
-                "encoders":     self.encoders,
-                "feature_cols": self.feature_cols,
-            }, f)
+            pickle.dump(
+                {
+                    "models": self.models,
+                    "encoders": self.encoders,
+                    "feature_cols": self.feature_cols,
+                },
+                f,
+            )
         logger.info(f"Model saved to {path}")
