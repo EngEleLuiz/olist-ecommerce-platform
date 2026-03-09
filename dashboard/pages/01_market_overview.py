@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
-from app import get_loader, render_sidebar
+from app import get_loader, html_table, render_sidebar
 from dashboard.charts import monthly_volume_bar, state_bar, category_treemap, review_score_bar
 
 render_sidebar()
@@ -53,13 +53,10 @@ state_df["late_rate"] = state_df["late_rate"].apply(lambda x: f"{x:.1%}")
 state_df["avg_review"] = state_df["avg_review"].apply(lambda x: f"{x:.2f} ⭐")
 state_df["gmv_share"] = state_df["gmv_share"].apply(lambda x: f"{x}%")
 
-st.dataframe(
-    state_df.rename(columns={
-        "customer_state": "State", "gmv": "GMV", "orders": "Orders",
-        "late_rate": "Late Rate", "avg_review": "Avg Review", "gmv_share": "GMV Share"
-    }),
-    hide_index=True, use_container_width=True,
-)
+html_table(state_df.rename(columns={
+    "customer_state": "State", "gmv": "GMV", "orders": "Orders",
+    "late_rate": "Late Rate", "avg_review": "Avg Review", "gmv_share": "GMV Share"
+}))
 
 st.markdown("---")
 col_a, col_b = st.columns([1, 2])
@@ -76,10 +73,7 @@ with col_b:
     cat_df["gmv"]       = cat_df["gmv"].apply(lambda x: f"R$ {x:,.0f}")
     cat_df["late_rate"] = cat_df["late_rate"].apply(lambda x: f"{x:.1%}")
     cat_df["avg_review"] = cat_df["avg_review"].apply(lambda x: f"{x:.2f}")
-    st.dataframe(
-        cat_df.rename(columns={
-            "main_category": "Category", "gmv": "GMV", "orders": "Orders",
-            "late_rate": "Late Rate", "avg_review": "Review"
-        }),
-        hide_index=True, use_container_width=True, height=350,
-    )
+    html_table(cat_df.rename(columns={
+        "main_category": "Category", "gmv": "GMV", "orders": "Orders",
+        "late_rate": "Late Rate", "avg_review": "Review"
+    }), height=350)

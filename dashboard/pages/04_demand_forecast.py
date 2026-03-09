@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import plotly.graph_objects as go
 import streamlit as st
 
-from app import get_loader, render_sidebar
+from app import get_loader, html_table, render_sidebar
 from dashboard.charts import AMBER, DARK, GOLD, MUTED, ORANGE, _apply, _rgba, forecast_band
 
 render_sidebar()
@@ -44,14 +44,19 @@ st.plotly_chart(_apply(fig_national, "National Weekly Order Volume", height=300)
 st.markdown("---")
 st.markdown('<div class="section-header">4-Week Forecast</div>', unsafe_allow_html=True)
 
+# Pre-compute top states/cats (same filter used during training)
+top_states_list = sorted(demand.groupby("customer_state")["order_count"].sum().nlargest(10).index.tolist())
+top_cats_list   = sorted(demand.groupby("category")["order_count"].sum().nlargest(10).index.tolist())
+
+st.info("⚡ Forecast runs on top 10 states × top 10 categories to fit within server memory (~60s)")
+
 col_f1, col_f2 = st.columns(2)
 with col_f1:
-    states    = sorted(demand["customer_state"].unique().tolist())
-    sel_state = st.selectbox("State", states, index=states.index("SP") if "SP" in states else 0)
+    sel_state = st.selectbox("State", top_states_list,
+                              index=top_states_list.index("SP") if "SP" in top_states_list else 0)
 with col_f2:
-    cats    = sorted(demand["category"].unique().tolist())
-    sel_cat = st.selectbox("Category", cats,
-                            index=cats.index("health_beauty") if "health_beauty" in cats else 0)
+    sel_cat = st.selectbox("Category", top_cats_list,
+                            index=top_cats_list.index("health_beauty") if "health_beauty" in top_cats_list else 0)
 
 run_forecast = st.button("▶  Run Forecast", type="primary")
 
@@ -59,8 +64,15 @@ if run_forecast or "forecast_results" in st.session_state:
     if run_forecast:
         with st.spinner("Training LightGBM… (~60 seconds)"):
             from ml.demand_forecast_model import DemandForecastModel
-            model    = DemandForecastModel(forecast_horizon=4, n_splits=5)
-            forecast = model.train_and_forecast(demand)
+            # Cap to top 10 states x top 10 categories to protect t3.micro RAM (1GB)
+            top_states = demand.groupby("customer_state")["order_count"].sum().nlargest(10).index
+            top_cats   = demand.groupby("category")["order_count"].sum().nlargest(10).index
+            demand_fit = demand[
+                demand["customer_state"].isin(top_states) &
+                demand["category"].isin(top_cats)
+            ].copy()
+            model    = DemandForecastModel(forecast_horizon=4, n_splits=3)
+            forecast = model.train_and_forecast(demand_fit)
             st.session_state["forecast_results"] = forecast
             st.session_state["forecast_model"]   = model
         st.success("Forecast complete ✓")
@@ -82,10 +94,10 @@ if run_forecast or "forecast_results" in st.session_state:
                                     "forecast_p10","forecast_p50","forecast_p90"]].copy()
             for col in ["forecast_p10","forecast_p50","forecast_p90"]:
                 fcast_display[col] = fcast_display[col].round(0).astype(int)
-            st.dataframe(fcast_display.rename(columns={
+            html_table(fcast_display.rename(columns={
                 "forecast_date":"Date","forecast_week":"Week",
                 "forecast_p10":"P10","forecast_p50":"P50 (median)","forecast_p90":"P90",
-            }), hide_index=True, use_container_width=True)
+            }))
 
     st.markdown("---")
     st.markdown('<div class="section-header">Feature Importance (p50 model)</div>', unsafe_allow_html=True)

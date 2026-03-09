@@ -131,6 +131,41 @@ def get_loader():
     return OlistLoader()
 
 
+
+def html_table(df, height: int = 400) -> None:
+    """Render a DataFrame as a styled HTML table matching the gold palette."""
+    thead_bg = "#2D2000"
+    thead_fg = "#FFD400"
+    row_even  = "#FFFFFF"
+    row_odd   = "#FFFDF5"
+    border    = "#F0E8C8"
+    text      = "#000000"
+
+    cols = "".join(f"<th style='padding:8px 14px;text-align:left;font-size:0.78rem;"
+                   f"letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;'>{c}</th>"
+                   for c in df.columns)
+    rows = ""
+    for i, (_, row) in enumerate(df.iterrows()):
+        bg = row_even if i % 2 == 0 else row_odd
+        cells = "".join(
+            f"<td style='padding:7px 14px;font-size:0.82rem;border-bottom:1px solid {border};"
+            f"white-space:nowrap;'>{v}</td>"
+            for v in row.values
+        )
+        rows += f"<tr style='background:{bg};color:{text};'>{cells}</tr>"
+
+    html = f"""
+    <div style='overflow:auto;max-height:{height}px;border:1px solid {border};border-radius:8px;'>
+      <table style='border-collapse:collapse;width:100%;font-family:Inter,Arial,sans-serif;'>
+        <thead>
+          <tr style='background:{thead_bg};color:{thead_fg};position:sticky;top:0;z-index:1;'>{cols}</tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>"""
+    import streamlit as st
+    st.markdown(html, unsafe_allow_html=True)
+
 def render_sidebar():
     # Inject CSS on every page that calls this
     st.markdown(OLIST_CSS, unsafe_allow_html=True)
@@ -225,13 +260,11 @@ def render_home():
         )
         top_states["gmv_fmt"]  = top_states["gmv"].apply(lambda x: f"R$ {x:,.0f}")
         top_states["late_fmt"] = top_states["late_rate"].apply(lambda x: f"{x:.1%}")
-        st.dataframe(
+        html_table(
             top_states[["customer_state", "gmv_fmt", "orders", "late_fmt"]].rename(columns={
                 "customer_state": "State", "gmv_fmt": "GMV",
                 "orders": "Orders", "late_fmt": "Late Rate",
-            }),
-            hide_index=True, use_container_width=True, height=280,
-        )
+            }), height=280)
 
 
 render_sidebar()

@@ -10,8 +10,8 @@ GOLD   = "#FFD400"
 YELLOW = "#FFC300"
 AMBER  = "#FF8C00"
 ORANGE = "#FF5F00"
-DARK   = "#2D2000"
-MUTED  = "#6B5B00"
+DARK   = "#000000"
+MUTED  = "#1a1a1a"
 RED    = "#CC2200"
 GREEN  = "#2D7A00"
 
@@ -28,8 +28,12 @@ BASE = dict(
     paper_bgcolor="#FFFFFF",
     plot_bgcolor="#FFFDF5",
     font=dict(family="Inter, Arial, sans-serif", color=DARK, size=11),
-    xaxis=dict(showgrid=False, color=MUTED, linecolor="#F0E8C8", linewidth=1),
-    yaxis=dict(showgrid=True, gridcolor="#F0E8C8", color=MUTED),
+    xaxis=dict(showgrid=False, color="#000000", linecolor="#F0E8C8", linewidth=1,
+               tickfont=dict(color="#000000", size=11),
+               title_font=dict(color="#000000")),
+    yaxis=dict(showgrid=True, gridcolor="#F0E8C8", color="#000000",
+               tickfont=dict(color="#000000", size=11),
+               title_font=dict(color="#000000")),
     margin=dict(t=48, b=24, l=12, r=12),
     legend=dict(bgcolor="#FFFFFF", bordercolor="#F0E8C8", borderwidth=1,
                 font=dict(size=11, color=DARK)),
@@ -43,9 +47,12 @@ BASE = dict(
 def _apply(fig: go.Figure, title: str = "", height: int = 380) -> go.Figure:
     fig.update_layout(
         **BASE,
-        title=dict(text=title, font=dict(size=13, color=DARK, family="Inter, Arial, sans-serif")),
+        title=dict(text=title, font=dict(size=13, color="#000000", family="Inter, Arial, sans-serif")),
         height=height,
     )
+    # Enforce black tick labels on all axes
+    fig.update_xaxes(tickfont=dict(color="#000000"), title_font=dict(color="#000000"))
+    fig.update_yaxes(tickfont=dict(color="#000000"), title_font=dict(color="#000000"))
     return fig
 
 
@@ -103,17 +110,19 @@ def category_treemap(df: pd.DataFrame, title: str = "GMV by Category") -> go.Fig
 
 def delay_histogram(df: pd.DataFrame, title: str = "Delivery Delay Distribution") -> go.Figure:
     delivered = df[df["order_status"] == "delivered"].dropna(subset=["delay_days"])
+    late = delivered[delivered["delay_days"] > 0]
     fig = go.Figure(go.Histogram(
-        x=delivered["delay_days"].clip(0, 30),
-        nbinsx=30, marker_color=AMBER, marker_opacity=0.85,
+        x=late["delay_days"].clip(0, 40),
+        nbinsx=40, marker_color=AMBER, marker_opacity=0.85,
     ))
-    fig.add_vline(x=0, line_color=GREEN, line_dash="dash",
-                  annotation_text="On time", annotation_font_color=GREEN)
-    fig.add_vline(x=delivered["delay_days"].median(),
-                  line_color=RED, line_dash="dash",
-                  annotation_text=f"Median {delivered['delay_days'].median():.1f}d",
-                  annotation_font_color=RED)
-    return _apply(fig, title)
+    median_late = late["delay_days"].median()
+    fig.add_vline(x=median_late, line_color=RED, line_dash="dash",
+                  annotation_text=f"Median {median_late:.1f}d late",
+                  annotation_font_color="#CC0000",
+                  annotation_font_size=11)
+    fig.update_xaxes(title_text="Days Late")
+    fig.update_yaxes(title_text="Orders")
+    return _apply(fig, f"Late Delivery Distribution ({len(late):,} late orders)")
 
 
 def late_rate_by_state(df: pd.DataFrame, title: str = "Late Rate by State") -> go.Figure:
@@ -128,7 +137,7 @@ def late_rate_by_state(df: pd.DataFrame, title: str = "Late Rate by State") -> g
         orientation="h", marker_color=colors, marker_opacity=0.85,
     ))
     fig.add_vline(x=state_lr.mean() * 100, line_color=GOLD, line_dash="dash",
-                  annotation_text=f"Avg {state_lr.mean():.1%}", annotation_font_color=DARK)
+                  annotation_text=f"Avg {state_lr.mean():.1%}", annotation_font_color="#000000")
     return _apply(fig, title, height=500)
 
 

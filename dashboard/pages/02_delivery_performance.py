@@ -22,8 +22,10 @@ deliv  = df[df["order_status"] == "delivered"]
 
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Delivered Orders", f"{len(deliv):,}")
-c2.metric("On-Time Rate",     f"{(~deliv['is_late']).mean():.1%}")
-c3.metric("Late Rate",        f"{deliv['is_late'].mean():.1%}")
+on_time_rate = (deliv["is_late"] == 0).mean()
+late_rate    = (deliv["is_late"] == 1).mean()
+c2.metric("On-Time Rate", f"{on_time_rate:.1%}")
+c3.metric("Late Rate",    f"{late_rate:.1%}")
 c4.metric("Avg Delay",        f"{deliv['delay_days'].mean():.1f} days")
 c5.metric("Avg Actual Days",  f"{deliv['actual_days'].mean():.1f} days")
 

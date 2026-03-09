@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import plotly.graph_objects as go
 import streamlit as st
 
-from app import get_loader, render_sidebar
+from app import get_loader, html_table, render_sidebar
 from dashboard.charts import (AMBER, DARK, GOLD, MUTED, ORANGE, RED, YELLOW,
                                _apply, _rgba, ltv_segment_bar, p_alive_histogram,
                                rfm_scatter)
@@ -56,8 +56,13 @@ if run_model or "ltv_predictions" in st.session_state:
     if run_model:
         with st.spinner("Fitting BG/NBD + Gamma-Gamma… (~30 seconds)"):
             from ml.customer_ltv_model import CustomerLTVModel
+            # Cap at repeat buyers only, max 5k rows — protects t3.micro RAM
+            rfm_fit = rfm[rfm["frequency_repeat"] > 0].head(5000)
+            if len(rfm_fit) < 10:
+                st.error("Not enough repeat buyers to fit model.")
+                st.stop()
             model = CustomerLTVModel()
-            preds = model.train_and_predict(rfm, predict_days=[90, 365])
+            preds = model.train_and_predict(rfm_fit, predict_days=[90, 365])
             st.session_state["ltv_predictions"]     = preds
             st.session_state["ltv_segment_summary"] = model.segment_summary(preds)
         st.success("Model trained ✓")
@@ -84,11 +89,11 @@ if run_model or "ltv_predictions" in st.session_state:
     seg_display["total_predicted_revenue"] = seg_display["total_predicted_revenue"].apply(lambda x: f"R$ {x:,.0f}")
     seg_display["avg_p_alive"]             = seg_display["avg_p_alive"].apply(lambda x: f"{x:.1%}")
     seg_display["avg_purchases_90d"]       = seg_display["avg_purchases_90d"].apply(lambda x: f"{x:.2f}")
-    st.dataframe(seg_display.rename(columns={
+    html_table(seg_display.rename(columns={
         "ltv_segment":"Segment","customer_count":"Customers",
         "avg_p_alive":"Avg P(Alive)","avg_ltv_365d":"Avg LTV 365d",
         "total_predicted_revenue":"Total Predicted Revenue",
         "avg_purchases_90d":"Avg Purchases (90d)",
-    }), hide_index=True, use_container_width=True)
+    }))
 else:
     st.info("Click **▶ Run LTV Model** to fit BG/NBD + Gamma-Gamma. Takes ~30 seconds.")

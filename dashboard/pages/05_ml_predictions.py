@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import plotly.graph_objects as go
 import streamlit as st
 
-from app import get_loader, render_sidebar
+from app import get_loader, html_table, render_sidebar
 from dashboard.charts import AMBER, DARK, GOLD, GREEN, MUTED, ORANGE, RED, _apply
 
 render_sidebar()
@@ -85,6 +85,6 @@ if run_model or "delay_predictions" in st.session_state:
         display = high_risk[cols_show].copy()
         if "delay_risk_score" in display.columns:
             display["delay_risk_score"] = display["delay_risk_score"].apply(lambda x: f"{x:.3f}")
-        st.dataframe(display, hide_index=True, use_container_width=True, height=300)
+        html_table(display, height=300)
 else:
     st.info("Click **▶ Run Delay Model** to score delivery risk. Takes ~30 seconds.")
