@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy only what the dashboard needs
 COPY data_loader.py   .
+COPY ml/              ml/
 COPY dashboard/       dashboard/
 
 # Streamlit config — disable file watcher, bind to 0.0.0.0 for ALB health checks
