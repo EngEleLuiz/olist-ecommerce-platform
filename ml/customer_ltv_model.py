@@ -43,8 +43,8 @@ MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "mlruns")
 SEED_PATH = Path("dbt_project/seeds/ltv_predictions.csv")
 
 # Penalizer keeps BG/NBD from overfitting on customers with very few purchases
-BGNBD_PENALIZER = 0.001
-GAMMA_PENALIZER = 0.001
+BGNBD_PENALIZER  = 0.001
+GAMMA_PENALIZER  = 0.001
 
 
 class CustomerLTVModel:
@@ -55,9 +55,9 @@ class CustomerLTVModel:
     """
 
     def __init__(self, penalizer_coef: float = BGNBD_PENALIZER) -> None:
-        self.penalizer = penalizer_coef
-        self.bgf: BetaGeoFitter | None = None
-        self.ggf: GammaGammaFitter | None = None
+        self.penalizer      = penalizer_coef
+        self.bgf: BetaGeoFitter | None      = None
+        self.ggf: GammaGammaFitter | None   = None
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -65,7 +65,7 @@ class CustomerLTVModel:
         self,
         rfm: pd.DataFrame,
         predict_days: list[int] | None = None,
-        discount_rate: float = 0.01,  # monthly discount rate for CLV
+        discount_rate: float = 0.01,    # monthly discount rate for CLV
     ) -> pd.DataFrame:
         """Fit BG/NBD + Gamma-Gamma and return per-customer LTV predictions.
 
@@ -86,9 +86,10 @@ class CustomerLTVModel:
         mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_LTV", "olist-customer-ltv"))
         with mlflow.start_run(run_name="customer_ltv_bgnbd"):
             mlflow.log_param("penalizer_coef", self.penalizer)
-            mlflow.log_param("discount_rate", discount_rate)
-            mlflow.log_param("n_customers", len(rfm))
-            mlflow.log_param("repeat_buyer_pct", f"{(rfm['frequency_repeat'] > 0).mean():.2%}")
+            mlflow.log_param("discount_rate",  discount_rate)
+            mlflow.log_param("n_customers",    len(rfm))
+            mlflow.log_param("repeat_buyer_pct",
+                             f"{(rfm['frequency_repeat'] > 0).mean():.2%}")
 
             # ── Step 1: BG/NBD — purchase frequency + churn ──────────────────
             self.bgf = BetaGeoFitter(penalizer_coef=self.penalizer)
@@ -98,12 +99,10 @@ class CustomerLTVModel:
                 T=rfm["T_days"],
             )
             logger.info("BG/NBD fitted ✓")
-            logger.info(
-                f"  r={self.bgf.params_['r']:.4f}  "
-                f"α={self.bgf.params_['alpha']:.4f}  "
-                f"a={self.bgf.params_['a']:.4f}  "
-                f"b={self.bgf.params_['b']:.4f}"
-            )
+            logger.info(f"  r={self.bgf.params_['r']:.4f}  "
+                        f"α={self.bgf.params_['alpha']:.4f}  "
+                        f"a={self.bgf.params_['a']:.4f}  "
+                        f"b={self.bgf.params_['b']:.4f}")
 
             # ── Step 2: Gamma-Gamma — monetary value ─────────────────────────
             # GGF requires only repeat buyers (frequency_repeat > 0)
@@ -114,42 +113,40 @@ class CustomerLTVModel:
                 monetary_value=repeat_buyers["monetary_mean"],
             )
             logger.info("Gamma-Gamma fitted ✓")
-            logger.info(
-                f"  p={self.ggf.params_['p']:.4f}  "
-                f"q={self.ggf.params_['q']:.4f}  "
-                f"v={self.ggf.params_['v']:.4f}"
-            )
+            logger.info(f"  p={self.ggf.params_['p']:.4f}  "
+                        f"q={self.ggf.params_['q']:.4f}  "
+                        f"v={self.ggf.params_['v']:.4f}")
 
             # ── Step 3: Predictions ───────────────────────────────────────────
             predictions = rfm[["customer_unique_id"]].copy()
 
             for days in predict_days:
                 col = f"predicted_purchases_{days}d"
-                predictions[col] = self.bgf.conditional_expected_number_of_purchases_up_to_time(
+                predictions[col] = np.array(self.bgf.conditional_expected_number_of_purchases_up_to_time(
                     t=days,
                     frequency=rfm["frequency_repeat"].values,
                     recency=rfm["recency_days"].values,
                     T=rfm["T_days"].values,
-                ).values
+                ))
 
             # P(alive) — probability customer hasn't churned
-            predictions["p_alive"] = self.bgf.conditional_probability_alive(
+            predictions["p_alive"] = np.array(self.bgf.conditional_probability_alive(
                 frequency=rfm["frequency_repeat"].values,
                 recency=rfm["recency_days"].values,
                 T=rfm["T_days"].values,
-            ).values
+            ))
 
             # Expected monetary value per transaction
-            predictions["expected_avg_order_value"] = self.ggf.conditional_expected_average_profit(
+            predictions["expected_avg_order_value"] = np.array(self.ggf.conditional_expected_average_profit(
                 frequency=rfm["frequency_repeat"].values,
                 monetary_value=rfm["monetary_mean"].values,
-            ).values
+            ))
 
             # LTV = predicted purchases × expected monetary value
             for days in predict_days:
                 predictions[f"predicted_ltv_{days}d"] = (
-                    predictions[f"predicted_purchases_{days}d"]
-                    * predictions["expected_avg_order_value"]
+                    predictions[f"predicted_purchases_{days}d"] *
+                    predictions["expected_avg_order_value"]
                 )
 
             # CLV with time-value-of-money (present value, monthly discounting)
@@ -197,13 +194,12 @@ class CustomerLTVModel:
     def segment_summary(self, predictions: pd.DataFrame) -> pd.DataFrame:
         """Aggregate predictions by LTV segment — for dashboard use."""
         return (
-            predictions.groupby("ltv_segment")
-            .agg(
-                customer_count=("customer_unique_id", "count"),
-                avg_p_alive=("p_alive", "mean"),
-                avg_ltv_365d=("predicted_ltv_365d", "mean"),
-                total_predicted_revenue=("predicted_ltv_365d", "sum"),
-                avg_purchases_90d=("predicted_purchases_90d", "mean"),
+            predictions.groupby("ltv_segment").agg(
+                customer_count          =("customer_unique_id", "count"),
+                avg_p_alive             =("p_alive",            "mean"),
+                avg_ltv_365d            =("predicted_ltv_365d", "mean"),
+                total_predicted_revenue =("predicted_ltv_365d", "sum"),
+                avg_purchases_90d       =("predicted_purchases_90d", "mean"),
             )
             .round(2)
             .reset_index()
@@ -213,24 +209,19 @@ class CustomerLTVModel:
     # ── Private ───────────────────────────────────────────────────────────────
 
     def _validate(self, rfm: pd.DataFrame) -> pd.DataFrame:
-        required = [
-            "customer_unique_id",
-            "frequency_repeat",
-            "recency_days",
-            "T_days",
-            "monetary_mean",
-        ]
+        required = ["customer_unique_id", "frequency_repeat", "recency_days",
+                    "T_days", "monetary_mean"]
         missing = [c for c in required if c not in rfm.columns]
         if missing:
             raise ValueError(f"RFM DataFrame missing columns: {missing}")
 
         # BG/NBD constraints
         rfm = rfm[
-            (rfm["frequency_repeat"] >= 0)
-            & (rfm["recency_days"] >= 0)
-            & (rfm["T_days"] > 0)
-            & (rfm["monetary_mean"] > 0)
-            & (rfm["recency_days"] <= rfm["T_days"])
+            (rfm["frequency_repeat"] >= 0) &
+            (rfm["recency_days"]     >= 0) &
+            (rfm["T_days"]           >  0) &
+            (rfm["monetary_mean"]    >  0) &
+            (rfm["recency_days"]     <= rfm["T_days"])
         ].copy()
 
         logger.info(f"Valid RFM rows: {len(rfm):,}")
@@ -256,7 +247,7 @@ class CustomerLTVModel:
                 calibration_period_end=pd.Timestamp.now() - pd.Timedelta(days=180),
             )
 
-            actual = summary["frequency_holdout"].values
+            actual    = summary["frequency_holdout"].values
             predicted = self.bgf.predict(
                 t=180,
                 frequency=summary["frequency_cal"].values,
@@ -264,7 +255,7 @@ class CustomerLTVModel:
                 T=summary["T_cal"].values,
             )
 
-            mae = mean_absolute_error(actual, predicted)
+            mae  = mean_absolute_error(actual, predicted)
             mape = mean_absolute_percentage_error(actual + 1e-6, predicted + 1e-6)
             logger.info(f"Holdout eval — MAE: {mae:.4f}  MAPE: {mape:.4f}")
             return {"bgnbd_mae": float(mae), "bgnbd_mape": float(mape)}

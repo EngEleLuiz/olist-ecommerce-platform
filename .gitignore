@@ -35,3 +35,12 @@ Thumbs.db
 "infra/terraform/.terraform/" 
 "infra/terraform/.terraform.lock.hcl" 
 "infra/terraform/terraform.tfstate*" 
+
+# Terraform local directories
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# Large binaries/executables
+*.exe
