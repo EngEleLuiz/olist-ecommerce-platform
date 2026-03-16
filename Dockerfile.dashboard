@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY data_loader.py   .
 COPY ml/              ml/
 COPY dashboard/       dashboard/
+# Remove pages/ so Streamlit does NOT auto-generate sidebar navigation
+RUN rm -rf dashboard/pages/
 
 # Streamlit config — disable file watcher, bind to 0.0.0.0 for ALB health checks
 ENV STREAMLIT_SERVER_PORT=8501 \
