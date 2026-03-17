@@ -380,17 +380,25 @@ def page_ltv(loader):
 
     if run_model or "ltv_predictions" in st.session_state:
         if run_model:
-            with st.spinner("Ajustando BG/NBD + Gamma-Gamma… (~30 segundos)"):
-                from ml.customer_ltv_model import CustomerLTVModel
-                rfm_fit = rfm[rfm["frequency_repeat"] > 0].head(5000).copy()
-                if len(rfm_fit) < 10:
-                    st.error("Clientes recorrentes insuficientes.")
+            with st.spinner("Fitting BG/NBD + Gamma-Gamma… (~30 seconds)"):
+                try:
+                    from ml.customer_ltv_model import CustomerLTVModel
+                    # Hard cap at 2000 rows — protects 1GB RAM on t3.micro
+                    rfm_fit = rfm[rfm["frequency_repeat"] > 0].head(2000).copy()
+                    if len(rfm_fit) < 10:
+                        st.error("Not enough repeat buyers to fit model.")
+                        st.stop()
+                    model = CustomerLTVModel()
+                    preds = model.train_and_predict(rfm_fit, predict_days=[90, 365])
+                    st.session_state["ltv_predictions"]     = preds
+                    st.session_state["ltv_segment_summary"] = model.segment_summary(preds)
+                    st.success("Model trained ✓")
+                except MemoryError:
+                    st.error("Out of memory. The server has 1GB RAM — try again after a few seconds.")
                     st.stop()
-                model = CustomerLTVModel()
-                preds = model.train_and_predict(rfm_fit, predict_days=[90, 365])
-                st.session_state["ltv_predictions"]     = preds
-                st.session_state["ltv_segment_summary"] = model.segment_summary(preds)
-            st.success("Modelo treinado ✓")
+                except Exception as e:
+                    st.error(f"Model error: {e}")
+                    st.stop()
 
         preds   = st.session_state["ltv_predictions"]
         seg_sum = st.session_state["ltv_segment_summary"]
